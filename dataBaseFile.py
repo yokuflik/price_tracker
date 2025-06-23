@@ -21,7 +21,9 @@ class UserInfo:
         self.ip_address = ip_address
 
 class Flight:
-    def __init__(self, ip: str, departure_airport: str, arrival_airport: str, requested_date: str, target_price: float, last_checked=None, last_checked_price=None):
+    def __init__(self, ip: str, departure_airport: str, arrival_airport: str, requested_date: str,
+                 target_price: float, last_checked=None, last_checked_price=None,
+                 best_price=None, best_time=None, best_airline=None):
         self.ip = ip
         self.departure_airport = departure_airport
         self.arrival_airport = arrival_airport
@@ -29,12 +31,15 @@ class Flight:
         self.target_price = target_price
         self.last_checked = last_checked
         self.last_checked_price = last_checked_price
-    
+        self.best_price = best_price
+        self.best_time = best_time
+        self.best_airline = best_airline
+
     @classmethod
     def fromTupel(cls, tpl: tuple):
-        if len(tpl) != 8: 
-            raise Exception('Problem with the tupel length')
-        return Flight(tpl[1], tpl[2], tpl[3], tpl[4], tpl[5], tpl[6], tpl[7])
+        if len(tpl) != 11:
+            raise Exception('Problem with the tuple length')
+        return Flight(tpl[1], tpl[2], tpl[3], tpl[4], tpl[5], tpl[6], tpl[7], tpl[8], tpl[9], tpl[10])
 
 #region debug funcs
 
@@ -52,7 +57,8 @@ def getUserStringFromTuple(tpl):
     user_id, ip = tpl
 
     cursor.execute("""
-        SELECT departure_airport, arrival_airport, requested_date, target_price, last_checked, last_checked_price
+        SELECT departure_airport, arrival_airport, requested_date, target_price,
+               last_checked, last_checked_price, best_price, best_time, best_airline
         FROM tracked_flights
         WHERE user_id = ?
     """, (user_id,))
@@ -67,17 +73,16 @@ def getUserStringFromTuple(tpl):
                 f"  requested date: {f[2]}\n"
                 f"  target price: {f[3]}\n"
             )
-            if f[4]:
-                dt_obj = datetime.fromisoformat(f[4])
-                last_checked_str = dt_obj.strftime("%d/%m/%Y %H:%M:%S")
-            else:
-                last_checked_str = "None"
-
+            last_checked_str = datetime.fromisoformat(f[4]).strftime("%d/%m/%Y %H:%M:%S") if f[4] else "None"
             last_checked_price_str = f[5] if f[5] is not None else "None"
+            best_price = f[6] if f[6] else "None"
+            best_time = f[7] if f[7] else "None"
+            best_airline = f[8] if f[8] else "None"
 
             result += (
                 f"  last checked: {last_checked_str}\n"
-                f"  last checked price: {last_checked_price_str}\n\n"
+                f"  last checked price: {last_checked_price_str}\n"
+                f"  best price: {best_price}, time: {best_time}, airline: {best_airline}\n\n"
             )
     else:
         result += "  No flights tracked.\n"
@@ -115,8 +120,11 @@ def addTrackedFlight(flight: Flight):
     user_id = result[0]
 
     cursor.execute("""
-        INSERT OR IGNORE INTO tracked_flights (user_id, departure_airport, arrival_airport, requested_date, target_price, last_checked, last_checked_price)
-        VALUES (?, ?, ?, ?, ?, NULL, NULL)
+        INSERT OR IGNORE INTO tracked_flights (
+            user_id, departure_airport, arrival_airport, requested_date, target_price,
+            last_checked, last_checked_price, best_price, best_time, best_airline
+        )
+        VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)
     """, (user_id, flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price))
 
     conn.commit()
@@ -135,8 +143,11 @@ def updateTrackedFlightDetail(ip, flight: Flight):
     user_id = result[0]
 
     cursor.execute("""
-        INSERT INTO tracked_flights (user_id, departure_airport, arrival_airport, requested_date, target_price, last_checked, last_checked_price)
-        VALUES (?, ?, ?, ?, ?, NULL, NULL)
+        INSERT INTO tracked_flights (
+            user_id, departure_airport, arrival_airport, requested_date, target_price,
+            last_checked, last_checked_price, best_price, best_time, best_airline
+        )
+        VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)
         ON CONFLICT(user_id, departure_airport, arrival_airport, requested_date)
         DO UPDATE SET
             target_price = excluded.target_price,
@@ -146,33 +157,39 @@ def updateTrackedFlightDetail(ip, flight: Flight):
     """, (user_id, flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price))
     conn.commit()
 
-def updateFlightCheckTime(departure_airport, arrival_airport, requested_date, time = datetime.now().isoformat()):
-    cursor.execute("""
-        UPDATE tracked_flights
-        SET last_checked = ?, last_checked_price = NULL
-        WHERE departure_airport = ? AND arrival_airport = ? AND requested_date = ?
-    """, (time, departure_airport, arrival_airport, requested_date))
-    conn.commit()
-
-def updateFlightCheckPrice(departure_airport, arrival_airport, requested_date, price_str):
-    """
-    Updates last_checked with current time and last_checked_price with the given price string.
-    """
-    now_iso = datetime.now().isoformat()
-    cursor.execute("""
-        UPDATE tracked_flights
-        SET last_checked = ?, last_checked_price = ?
-        WHERE departure_airport = ? AND arrival_airport = ? AND requested_date = ?
-    """, (now_iso, price_str, departure_airport, arrival_airport, requested_date))
-    conn.commit()
+def updateFlightDetail(updated_flight: Flight, row):
+    if isinstance(updated_flight, Flight):
+        cursor.execute("""
+            UPDATE tracked_flights
+            SET last_checked = ?, last_checked_price = ?, target_price = ?,
+                best_price = ?, best_time = ?, best_airline = ?
+            WHERE user_id = ? AND departure_airport = ? AND arrival_airport = ? AND requested_date = ?
+        """, (
+            updated_flight.last_checked,
+            updated_flight.last_checked_price,
+            updated_flight.target_price,
+            updated_flight.best_price,
+            updated_flight.best_time,
+            updated_flight.best_airline,
+            row[1],  # user_id
+            updated_flight.departure_airport,
+            updated_flight.arrival_airport,
+            updated_flight.requested_date
+        ))
+        conn.commit()
+    else:
+        raise TypeError("Flight to update wasn't Flight type")
 
 def update_all_flight_details(update_func):
     """
-    קוראת לפונקציה `update_func(flight: Flight)` עבור כל טיסה במעקב.
-    הפונקציה צריכה להחזיר מופע חדש של `Flight` עם שדות מעודכנים (כולל last_checked ו־last_checked_price).
+    Calls `update_func(flight: Flight)` for each tracked flight in the database.
+    The function should return a new instance of `Flight` with updated fields
+    (including last_checked, last_checked_price, best_price, best_time, best_airline).
     """
     cursor.execute("""
-        SELECT id, user_id, departure_airport, arrival_airport, requested_date, target_price, last_checked, last_checked_price
+        SELECT id, user_id, departure_airport, arrival_airport, requested_date,
+               target_price, last_checked, last_checked_price,
+               best_price, best_time, best_airline
         FROM tracked_flights
     """)
     all_flights = cursor.fetchall()
@@ -184,41 +201,6 @@ def update_all_flight_details(update_func):
             updateFlightDetail(updated_flight, row)
         except Exception as e:
             print(f"Failed updating the flight {row[2]} -> {row[3]} in {row[4]}: {e}")
-            raise e
-
-def updateFlightDetail(updated_flight: Flight, row):
-    if isinstance(updated_flight, Flight):
-        cursor.execute("""
-            UPDATE tracked_flights
-            SET last_checked = ?, last_checked_price = ?, target_price = ?
-            WHERE user_id = ? AND departure_airport = ? AND arrival_airport = ? AND requested_date = ?
-        """, (
-            updated_flight.last_checked,
-            updated_flight.last_checked_price,
-            updated_flight.target_price,
-            row[1],  # user_id
-            updated_flight.departure_airport,
-            updated_flight.arrival_airport,
-            updated_flight.requested_date
-        ))
-        conn.commit()
-    else:
-        raise TypeError("Flight to update wasnt Flight type")
-
-def deleteUserFlight(ip, departure_airport, arrival_airport, requested_date):
-    cursor.execute("SELECT id FROM users WHERE ip_address = ?", (ip,))
-    result = cursor.fetchone()
-    if result is None:
-        raise ValueError(f"No user found with IP {ip}")
-    user_id = result[0]
-
-    cursor.execute("""
-        DELETE FROM tracked_flights
-        WHERE user_id = ? AND departure_airport = ? AND arrival_airport = ? AND requested_date = ?
-    """, (user_id, departure_airport, arrival_airport, requested_date))
-
-    conn.commit()
-    return cursor.rowcount > 0
 
 def getUserFlight(ip, departure_airport, arrival_airport, requested_date):
     cursor.execute("SELECT id FROM users WHERE ip_address = ?", (ip,))
@@ -244,7 +226,10 @@ def getUserFlight(ip, departure_airport, arrival_airport, requested_date):
         "requested_date": flight[4],
         "target_price": flight[5],
         "last_checked": flight[6],
-        "last_checked_price": flight[7]
+        "last_checked_price": flight[7],
+        "best_price": flight[8],
+        "best_time": flight[9],
+        "best_airline": flight[10]
     }
 
 def getAllUserFlights(ip):
@@ -269,7 +254,10 @@ def getAllUserFlights(ip):
             "requested_date": f[4],
             "target_price": f[5],
             "last_checked": f[6],
-            "last_checked_price": f[7]
+            "last_checked_price": f[7],
+            "best_price": f[8],
+            "best_time": f[9],
+            "best_airline": f[10]
         }
         for f in flights
     ]
@@ -300,6 +288,9 @@ def makeTheTabels():
         target_price REAL,
         last_checked TEXT,
         last_checked_price REAL,
+        best_price TEXT,
+        best_time TEXT,
+        best_airline TEXT,
         UNIQUE (user_id, departure_airport, arrival_airport, requested_date),
         FOREIGN KEY (user_id) REFERENCES users(id)
     )
