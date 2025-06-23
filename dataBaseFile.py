@@ -300,11 +300,11 @@ def makeTheTabels():
 def _mainFromFile():
     makeTheTabels()
 
-    ip = "1.2.3.4"
+    """ip = "1.2.3.4"
     addUser(UserInfo(ip))
     addTrackedFlight(Flight(ip, "TLV", "CDG", "2025-07-01", 350.00))
     updateTrackedFlightDetail(ip, Flight(ip, "TLV", "CDG", "2025-07-01", 300.00))
-    updateTrackedFlightDetail(ip, Flight(ip, "TLV", "CDG", "2025-07-02", 300.00))
+    updateTrackedFlightDetail(ip, Flight(ip, "TLV", "CDG", "2025-07-02", 300.00))"""
     print(getAllUsers())
 
 #endregion
