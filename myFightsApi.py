@@ -3,6 +3,34 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Query
 import dataBaseFile as db
 import config
+import logging
+import os
+from dotenv import load_dotenv
+
+#region loggs file
+
+load_dotenv()
+
+LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", "api.log")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+#set the dir
+log_dir = os.path.dirname(LOG_FILE_PATH)
+if log_dir and not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE_PATH, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+#endregion
 
 app = FastAPI()
 
@@ -21,7 +49,8 @@ def get_all_users():
     try:
         return db.callFuncFromOtherThread(db.get_all_users)
     except Exception as e:
-        return f"Problem with the data base. {type(e)} - {e}"
+        logger.error(f"Error in /get_all_users: {e}")
+        raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
 
 @app.post("/add_user")
 async def add_user(request: Request):
@@ -31,16 +60,28 @@ async def add_user(request: Request):
         user = config.UserInfo.from_dict(body)
         success = db.callFuncFromOtherThread(db.addUser, user)
 
-        return {"message": f"{config.USER_ADDED_SUCCESSFULLY if success else config.USER_ADD_FAILED}"}
+        if success:
+            logger.info(f"User added successfully: {body}")
+            return config.USER_ADDED_SUCCESSFULLY
+        else:
+            logger.warning(f"warrning in /add_user {body} didnt work")
+            raise HTTPException(status_code=500, detail=config.USER_ADD_FAILED)
     except Exception as e:
         #for other errors
-        print(f"Error in adding user: {e}")
+        logger.error(f"Error in /add_user: {e}" + (f", body: {body}" if 'body' in locals() else ""))
+        raise HTTPException(status_code=500, detail=f"Error in adding user: {e}")
 
 @app.delete("/del_user_by_ip")
 def delete_user(user_ip: str = Query(...)):
     success = db.callFuncFromOtherThread(db.delete_user, user_ip)
 
-    return {"message": f"{config.USER_DELETED_SUCCESSFULLY if success else config.USER_DELETE_FAILED}"}
+    #return {"message": f"{config.USER_DELETED_SUCCESSFULLY if success else config.USER_DELETE_FAILED}"}
+    if success:
+        logger.info(f"User deleted successfully: ip - {user_ip}")
+        return config.USER_DELETED_SUCCESSFULLY
+    else:
+        logger.warning(f"warning in /delete_user ip:{user_ip}")
+        raise HTTPException(status_code=500, detail=config.USER_DELETE_FAILED)
 
 #endregion
 
@@ -55,35 +96,44 @@ async def add_flight(request: Request):
         
         success = db.callFuncFromOtherThread(db.addTrackedFlight, flight)
 
-        return {"message": f"{config.FLIGHT_ADDED_SUCCESSFULLY if success else config.FLIGHT_ADD_FAILED}"}
+        if success:
+            logger.info(f"Flight added successfully: {body}")
+            return config.FLIGHT_ADDED_SUCCESSFULLY
+        else:
+            logger.warning(f"warning in /add_flight body:{body}")
+            raise HTTPException(status_code=500, detail=config.FLIGHT_ADD_FAILED)
+        #return {"message": f"{config.FLIGHT_ADDED_SUCCESSFULLY if success else config.FLIGHT_ADD_FAILED}"}
     except Exception as e:
-        if config.USER_NOT_FOUND_ERROR in e: #user not found
-            return config.USER_NOT_FOUND_ERROR
+        if config.USER_NOT_FOUND_ERROR in str(e): #user not found
+            logger.warning(f"Warning in /add_flight ip: {flight.ip} not found")
+            raise HTTPException(status_code=404, detail=config.USER_NOT_FOUND_ERROR)
 
         #for other errors
-        print(f"Error in /track: {e}")
+        logger.error(f"Error in /add_flight: {e}"+ (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/get_flights")
 def get_flights(ip: str = Query(...)):
-    #ip = request.client.host
     try:
-        #return db.getAllUserFlights(ip)
-        res = db.callFuncFromOtherThread(db.getAllUserFlights, ip)
-
-        return res
+        return db.callFuncFromOtherThread(db.getAllUserFlights, ip)
     except Exception as e:
-        if config.USER_NOT_FOUND_ERROR in e: #user not found
-            return config.USER_NOT_FOUND_ERROR
+        if config.USER_NOT_FOUND_ERROR in str(e): #user not found
+            logger.warning(f"warning in /get_flights: flight {ip} not found")
+            raise HTTPException(status_code=404, detail=config.USER_NOT_FOUND_ERROR)
         
-        return f"Problem with the data base. {type(e)} - {e}"
+        #a real error
+        logger.error(f"Error in /get_flights: {e} ip: {ip}")
+        raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
 
 @app.delete("/del_flights")
 async def delete_flight(flight_id: float = Query(...)):
     success = db.callFuncFromOtherThread(db.deleteFlightById, float(flight_id))
-    if not success:
-        return config.FLIGHT_DELETE_FAILED
-    return config.FLIGHT_DELETED_SUCCESSFULLY
+    if success:
+        logger.info(f"Flight deleted successfully: flight_id - {flight_id}")
+        return config.FLIGHT_DELETED_SUCCESSFULLY
+    else:
+        logger.warning(f"Warning in /delete_flights flight_id: {flight_id}")
+        raise HTTPException(status_code=500, detail=config.FLIGHT_DELETE_FAILED)
 
 @app.put("/update_flight")
 async def update_flight(request: Request):
@@ -93,18 +143,22 @@ async def update_flight(request: Request):
         flight = config.Flight.from_dict(body)
 
         success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight_id, flight)
-        if not success:
-            return config.FLIGHT_UPDATE_FAILED
-
-        return config.FLIGHT_UPDATED_SUCCESSFULLY
-
+        if success:
+            logger.info(f"Flight updated successfully: {body}")
+            return config.FLIGHT_UPDATED_SUCCESSFULLY
+        else:
+            logger.warning(f"Warning in /update_flight"+ (f", body: {body}" if 'body' in locals() else ""))
+            raise HTTPException(status_code=500, detail=config.FLIGHT_UPDATE_FAILED)
+        
     except ValueError as e:
         if config.USER_NOT_FOUND_ERROR in str(e):
-            return config.USER_NOT_FOUND_ERROR
+            logger.warning(f"Warningg in /update_flight: user ip:{flight.ip} not found")
+            raise HTTPException(status_code=404, detail=config.USER_NOT_FOUND_ERROR)
+        logger.error(f"Error in /update_flight: {e}"+ (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
-        print(f"Error in /update_flight: {e}")
+        logger.error(f"Error in /update_flight: {e}"+ (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=500, detail="Internal server error")
     
 #endregion
