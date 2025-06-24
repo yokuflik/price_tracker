@@ -1,46 +1,15 @@
 import sqlite3
 from datetime import datetime
 import os
-import atexit
+import config
+from config import Flight
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASEFILE = os.path.join(CURRENT_DIR, "users.db")
 
-# Connect to the database file
-#conn = sqlite3.connect(DATABASEFILE, check_same_thread=False)
-#cursor = conn.cursor()
-
-# Ensures the connection is committed and closed when the program exits normally
-"""@atexit.register
-def close_connection():
-    if conn:
-        conn.commit()
-        conn.close()"""
-
 class UserInfo:
     def __init__(self, ip_address):
         self.ip_address = ip_address
-
-class Flight:
-    def __init__(self, ip: str, departure_airport: str, arrival_airport: str, requested_date: str,
-                 target_price: float, last_checked=None, last_checked_price=None,
-                 best_price=None, best_time=None, best_airline=None):
-        self.ip = ip
-        self.departure_airport = departure_airport
-        self.arrival_airport = arrival_airport
-        self.requested_date = requested_date
-        self.target_price = target_price
-        self.last_checked = last_checked
-        self.last_checked_price = last_checked_price
-        self.best_price = best_price
-        self.best_time = best_time
-        self.best_airline = best_airline
-
-    @classmethod
-    def fromTupel(cls, tpl: tuple):
-        if len(tpl) != 11:
-            raise Exception('Problem with the tuple length')
-        return Flight(tpl[1], tpl[2], tpl[3], tpl[4], tpl[5], tpl[6], tpl[7], tpl[8], tpl[9], tpl[10])
 
 #region debug funcs
 
@@ -105,6 +74,14 @@ def delete_user(cursor, conn, ip: str):
     cursor.execute("DELETE FROM users WHERE ip_address = ?", (ip,))
     conn.commit()
     return cursor.rowcount > 0
+
+def get_all_users(cursor, conn):
+    cursor.execute("SELECT * FROM users")
+    rows = cursor.fetchall()
+    columns = [desc[0] for desc in cursor.description]  # שמות העמודות
+
+    users = [dict(zip(columns, row)) for row in rows]   # המרה לרשימת מילונים
+    return users
 
 #endregion
 
@@ -203,42 +180,11 @@ def update_all_flight_details(cursor,conn, update_func):
         except Exception as e:
             print(f"Failed updating the flight {row[2]} -> {row[3]} in {row[4]}: {e}")
 
-USER_NOT_FOUND_ERROR = "No user found with IP"
-def getUserFlight(cursor,conn, ip, departure_airport, arrival_airport, requested_date):
-    cursor.execute("SELECT id FROM users WHERE ip_address = ?", (ip,))
-    result = cursor.fetchone()
-    if result is None:
-        raise ValueError(f"{USER_NOT_FOUND_ERROR} {ip}")
-    user_id = result[0]
-
-    cursor.execute("""
-        SELECT * FROM tracked_flights
-        WHERE user_id = ? AND departure_airport = ? AND arrival_airport = ? AND requested_date = ?
-    """, (user_id, departure_airport, arrival_airport, requested_date))
-
-    flight = cursor.fetchone()
-    if flight is None:
-        return None
-
-    return {
-        "flight_id": flight[0],
-        "user_id": flight[1],
-        "departure_airport": flight[2],
-        "arrival_airport": flight[3],
-        "requested_date": flight[4],
-        "target_price": flight[5],
-        "last_checked": flight[6],
-        "last_checked_price": flight[7],
-        "best_price": flight[8],
-        "best_time": flight[9],
-        "best_airline": flight[10]
-    }
-
 def getAllUserFlights(cursor,conn, ip):
     cursor.execute("SELECT id FROM users WHERE ip_address = ?", (ip,))
     result = cursor.fetchone()
     if result is None:
-        raise ValueError(f"No user found with IP {ip}")
+        raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {ip}")
     user_id = result[0]
 
     cursor.execute("""
@@ -263,6 +209,11 @@ def getAllUserFlights(cursor,conn, ip):
         }
         for f in flights
     ]
+
+def deleteFlightById(cursor, conn, flightId:float):
+    cursor.execute("DELETE FROM tracked_flights WHERE id = ?", (flightId,))
+    conn.commit()
+    return cursor.rowcount > 0
 
 #endregion
 
@@ -329,5 +280,6 @@ def callFuncFromOtherThread(func=None, *args, **kwargs):
 
 if __name__ == "__main__":
     #_mainFromFile()
-    print (callFuncFromOtherThread(getAllUserFlights, "1.2.3.4"))
+    #print (callFuncFromOtherThread(getAllUsers))
     #print(callFuncFromOtherThread(getAllUsers))
+    print (callFuncFromOtherThread(getAllUserFlights, "1.2.3.5"))
