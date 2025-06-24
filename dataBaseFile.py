@@ -2,14 +2,10 @@ import sqlite3
 from datetime import datetime
 import os
 import config
-from config import Flight
+from config import Flight, UserInfo
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASEFILE = os.path.join(CURRENT_DIR, "users.db")
-
-class UserInfo:
-    def __init__(self, ip_address):
-        self.ip_address = ip_address
 
 #region debug funcs
 
@@ -65,7 +61,7 @@ def getUserStringFromTuple(cursor,conn, tpl):
 
 def addUser(cursor, conn, user: UserInfo):
     if not isinstance(user, UserInfo):
-        raise TypeError("user must be UserInfo type")
+        raise TypeError("User must be UserInfo type")
     cursor.execute("INSERT OR IGNORE INTO users (ip_address) VALUES (?)", (user.ip_address,))
     conn.commit()
     return cursor.rowcount > 0
@@ -108,31 +104,34 @@ def addTrackedFlight(cursor, conn, flight: Flight):
     conn.commit()
     return cursor.rowcount > 0
 
-def updateTrackedFlightDetail(cursor, conn, ip, flight: Flight):
+def updateTrackedFlightDetail(cursor, conn, flight_id, flight: Flight):
     if not isinstance(flight, Flight):
         raise TypeError("flight must be Flight type")
-    if ip != flight.ip:
-        raise Exception("Can't change a flight with a different IP")
-
-    cursor.execute("SELECT id FROM users WHERE ip_address = ?", (ip,))
-    result = cursor.fetchone()
-    if result is None:
-        raise ValueError(f"No user found with IP {ip}")
-    user_id = result[0]
 
     cursor.execute("""
-        INSERT INTO tracked_flights (
-            user_id, departure_airport, arrival_airport, requested_date, target_price,
-            last_checked, last_checked_price, best_price, best_time, best_airline
-        )
-        VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)
-        ON CONFLICT(user_id, departure_airport, arrival_airport, requested_date)
-        DO UPDATE SET
-            target_price = excluded.target_price,
-            departure_airport = excluded.departure_airport,
-            arrival_airport = excluded.arrival_airport,
-            requested_date = excluded.requested_date
-    """, (user_id, flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price))
+        UPDATE tracked_flights
+        SET departure_airport = ?,
+            arrival_airport = ?,
+            requested_date = ?,
+            target_price = ?,
+            last_checked = ?,
+            last_checked_price = ?,
+            best_price = ?,
+            best_time = ?,
+            best_airline = ?
+        WHERE id = ?
+    """, (
+        flight.departure_airport,
+        flight.arrival_airport,
+        flight.requested_date,
+        flight.target_price,
+        flight.last_checked,
+        flight.last_checked_price,
+        flight.best_price,
+        flight.best_time,
+        flight.best_airline,
+        flight_id
+    ))
     conn.commit()
 
 def updateFlightDetail(cursor, conn, updated_flight: Flight, row):
@@ -260,7 +259,7 @@ def _mainFromFile():
     ip = "1.2.3.5"
     addUser(cursor, conn, UserInfo(ip))
     addTrackedFlight(cursor, conn, Flight(ip, "TLV", "CDG", "2025-07-01", 350.00))
-    updateTrackedFlightDetail(cursor, conn, ip, Flight(ip, "TLV", "CDG", "2025-07-01", 300.00))
+    #updateTrackedFlightDetail(cursor, conn, ip, Flight(ip, "TLV", "CDG", "2025-07-01", 300.00))
     print(getAllUsers(cursor, conn))
 
     conn.commit()
@@ -280,6 +279,8 @@ def callFuncFromOtherThread(func=None, *args, **kwargs):
 
 if __name__ == "__main__":
     #_mainFromFile()
-    #print (callFuncFromOtherThread(getAllUsers))
-    #print(callFuncFromOtherThread(getAllUsers))
-    print (callFuncFromOtherThread(getAllUserFlights, "1.2.3.5"))
+    print(callFuncFromOtherThread(getAllUserFlights, "1.2.3.5"))
+    print (callFuncFromOtherThread(updateTrackedFlightDetail, 5, Flight("1.2.3.5", "TLV", "CDG", "2025-07-01", 1200.00)))
+    print(callFuncFromOtherThread(getAllUserFlights, "1.2.3.5"))
+    #print (callFuncFromOtherThread(addUser, UserInfo("1.4.5.6")))
+    #print (callFuncFromOtherThread(delete_user, "1.4.5.6"))

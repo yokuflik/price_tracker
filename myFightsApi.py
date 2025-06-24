@@ -23,6 +23,25 @@ def get_all_users():
     except Exception as e:
         return f"Problem with the data base. {type(e)} - {e}"
 
+@app.post("/add_user")
+async def add_user(request: Request):
+    try:
+        body = await request.json()
+
+        user = config.UserInfo.from_dict(body)
+        success = db.callFuncFromOtherThread(db.addUser, user)
+
+        return {"message": f"{config.USER_ADDED_SUCCESSFULLY if success else config.USER_ADD_FAILED}"}
+    except Exception as e:
+        #for other errors
+        print(f"Error in adding user: {e}")
+
+@app.delete("/del_user_by_ip")
+def delete_user(user_ip: str = Query(...)):
+    success = db.callFuncFromOtherThread(db.delete_user, user_ip)
+
+    return {"message": f"{config.USER_DELETED_SUCCESSFULLY if success else config.USER_DELETE_FAILED}"}
+
 #endregion
 
 #region flights
@@ -36,7 +55,7 @@ async def add_flight(request: Request):
         
         success = db.callFuncFromOtherThread(db.addTrackedFlight, flight)
 
-        return {"message": f"{"Flight added successfully" if success else "Failed to add flight"}"}
+        return {"message": f"{config.FLIGHT_ADDED_SUCCESSFULLY if success else config.FLIGHT_ADD_FAILED}"}
     except Exception as e:
         if config.USER_NOT_FOUND_ERROR in e: #user not found
             return config.USER_NOT_FOUND_ERROR
@@ -66,4 +85,26 @@ async def delete_flight(flight_id: float = Query(...)):
         return config.FLIGHT_DELETE_FAILED
     return config.FLIGHT_DELETED_SUCCESSFULLY
 
+@app.put("/update_flight")
+async def update_flight(request: Request):
+    try:
+        body = await request.json()
+        flight_id = body.get("flight_id")
+        flight = config.Flight.from_dict(body)
+
+        success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight_id, flight)
+        if not success:
+            return config.FLIGHT_UPDATE_FAILED
+
+        return config.FLIGHT_UPDATED_SUCCESSFULLY
+
+    except ValueError as e:
+        if config.USER_NOT_FOUND_ERROR in str(e):
+            return config.USER_NOT_FOUND_ERROR
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+        print(f"Error in /update_flight: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    
 #endregion
