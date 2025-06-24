@@ -3,9 +3,13 @@ from datetime import datetime
 import os
 import config
 from config import Flight, UserInfo
+from dotenv import load_dotenv
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASEFILE = os.path.join(CURRENT_DIR, "users.db")
+
+#CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+#DATABASEFILE = os.path.join(CURRENT_DIR, "users.db")
+
+DATA_BASE_FILE = os.getenv("DATA_BASE_FILE", "users.db")
 
 #region debug funcs
 
@@ -219,8 +223,8 @@ def deleteFlightById(cursor, conn, flightId:float):
 #region main funcs
 
 def _restartDataBase():
-    if os.path.exists(DATABASEFILE):
-        os.remove(DATABASEFILE)
+    if os.path.exists(DATA_BASE_FILE):
+        os.remove(DATA_BASE_FILE)
 
 def makeTheTabels(cursor, conn):
     cursor.execute("""
@@ -250,7 +254,7 @@ def makeTheTabels(cursor, conn):
     conn.commit()
 
 def _mainFromFile():
-    conn = sqlite3.connect(DATABASEFILE)
+    conn = sqlite3.connect(DATA_BASE_FILE)
     #print("Database file:", conn.execute('PRAGMA database_list').fetchall())
     cursor = conn.cursor()
 
@@ -266,7 +270,7 @@ def _mainFromFile():
     conn.close()
 
 def callFuncFromOtherThread(func=None, *args, **kwargs):
-    with sqlite3.connect(DATABASEFILE) as conn:
+    with sqlite3.connect(DATA_BASE_FILE) as conn:
         cursor = conn.cursor()
         if func is not None:
             result = func(cursor, conn, *args, **kwargs)
