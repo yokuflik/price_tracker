@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Query
 import dataBaseFile as db
 import config
+import models
 import logging
 import os
 from dotenv import load_dotenv
@@ -57,7 +58,7 @@ async def add_user(request: Request):
     try:
         body = await request.json()
 
-        user = config.UserInfo.from_dict(body)
+        user = models.UserInfo.from_dict(body)
         success = db.callFuncFromOtherThread(db.addUser, user)
 
         if success:
@@ -140,7 +141,7 @@ async def update_flight(request: Request):
     try:
         body = await request.json()
         flight_id = body.get("flight_id")
-        flight = config.Flight.from_dict(body)
+        flight = models.Flight.from_dict(body)
 
         success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight_id, flight)
         if success:

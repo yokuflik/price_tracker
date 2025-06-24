@@ -2,12 +2,9 @@ import sqlite3
 from datetime import datetime
 import os
 import config
-from config import Flight, UserInfo
+from models import Flight, UserInfo
 from dotenv import load_dotenv
 
-
-#CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-#DATABASEFILE = os.path.join(CURRENT_DIR, "users.db")
 
 DATA_BASE_FILE = os.getenv("DATA_BASE_FILE", "users.db")
 
@@ -284,7 +281,7 @@ def callFuncFromOtherThread(func=None, *args, **kwargs):
 if __name__ == "__main__":
     #_mainFromFile()
     print(callFuncFromOtherThread(getAllUserFlights, "1.2.3.5"))
-    print (callFuncFromOtherThread(updateTrackedFlightDetail, 5, Flight("1.2.3.5", "TLV", "CDG", "2025-07-01", 1200.00)))
+    print (callFuncFromOtherThread(updateTrackedFlightDetail, 5, Flight("1.2.3.5", "TLV", "CDG", "2025-07-01", 600.00)))
     print(callFuncFromOtherThread(getAllUserFlights, "1.2.3.5"))
     #print (callFuncFromOtherThread(addUser, UserInfo("1.4.5.6")))
     #print (callFuncFromOtherThread(delete_user, "1.4.5.6"))

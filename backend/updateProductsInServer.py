@@ -1,14 +1,13 @@
 import dataBaseFile as db
 import amadeus_api
 from datetime import datetime
-import time
-import config
+import models
 
 def updateAllFlightPrices():
     db.callFuncFromOtherThread(db.update_all_flight_details, updateBestFlight)
     print (db.callFuncFromOtherThread(db.getAllUsers))
 
-def updateBestFlight(flight: config.Flight):
+def updateBestFlight(flight: models.Flight):
     #find the best flight
     flightOptions = getFlightOptions(flight)
     bestPrice = None
@@ -40,7 +39,7 @@ def updateBestFlight(flight: config.Flight):
 
     return flight
     
-def getFlightOptions(flight: config.Flight):
+def getFlightOptions(flight: models.Flight):
     """
     returns the flight options
     """
@@ -81,7 +80,7 @@ def print_flight_options(flight_options):
         except Exception as e:
             print(f"Problem in the processing: {e}")
 
-def foundBetterFlight(flight: config.Flight):
+def foundBetterFlight(flight: models.Flight):
     print (f"Found better flight ")
 
 def main():
