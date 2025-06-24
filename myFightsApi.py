@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Query
 import dataBaseFile as db
 
-
 app = FastAPI()
+
 # מאפשר קריאות ממקומות אחרים (כמו דפדפן, Postman וכו')
 app.add_middleware(
     CORSMiddleware,
@@ -39,12 +40,19 @@ async def add_flight(request: Request):
         print(f"Error in /track: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.get("/flights")
-def get_flights(request: Request):
-    ip = request.client.host
-    return db.getAllUserFlights(ip)
+@app.get("/getflights")
+def get_flights(ip: str = Query(...)):
+    #ip = request.client.host
+    try:
+        #return db.getAllUserFlights(ip)
+        res = db.callFuncFromOtherThread(db.getAllUserFlights, ip)
 
-@app.delete("/flights")
+        print (res)
+        return res
+    except Exception as e:
+        return f"Problem with the data base. {type(e)} - {e}"
+
+"""@app.delete("/flights")
 async def delete_flight(request: Request):
     body = await request.json()
     ip = request.client.host
@@ -52,3 +60,4 @@ async def delete_flight(request: Request):
     if not success:
         raise HTTPException(status_code=404, detail="Flight not found")
     return {"message": "Flight deleted"}
+"""

@@ -3,18 +3,19 @@ from datetime import datetime
 import os
 import atexit
 
-DATABASEFILE = "users.db"
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASEFILE = os.path.join(CURRENT_DIR, "users.db")
 
 # Connect to the database file
-conn = sqlite3.connect(DATABASEFILE)
-cursor = conn.cursor()
+#conn = sqlite3.connect(DATABASEFILE, check_same_thread=False)
+#cursor = conn.cursor()
 
 # Ensures the connection is committed and closed when the program exits normally
-@atexit.register
+"""@atexit.register
 def close_connection():
     if conn:
         conn.commit()
-        conn.close()
+        conn.close()"""
 
 class UserInfo:
     def __init__(self, ip_address):
@@ -43,12 +44,12 @@ class Flight:
 
 #region debug funcs
 
-def getAllUsers():
+def getAllUsers(cursor, conn):
     cursor.execute("SELECT * FROM users")
     rows = cursor.fetchall()
-    return "\n".join(getUserStringFromTuple(row) for row in rows)
+    return "\n".join(getUserStringFromTuple(cursor,conn, row) for row in rows)
 
-def getUserStringFromTuple(tpl):
+def getUserStringFromTuple(cursor,conn, tpl):
     if not isinstance(tpl, tuple):
         raise TypeError("Tpl has to be a tuple")
     if len(tpl) != 2:
@@ -93,14 +94,14 @@ def getUserStringFromTuple(tpl):
 
 #region control users
 
-def addUser(user: UserInfo):
+def addUser(cursor, conn, user: UserInfo):
     if not isinstance(user, UserInfo):
         raise TypeError("user must be UserInfo type")
     cursor.execute("INSERT OR IGNORE INTO users (ip_address) VALUES (?)", (user.ip_address,))
     conn.commit()
     return cursor.rowcount > 0
 
-def delete_user(ip: str):
+def delete_user(cursor, conn, ip: str):
     cursor.execute("DELETE FROM users WHERE ip_address = ?", (ip,))
     conn.commit()
     return cursor.rowcount > 0
@@ -109,7 +110,7 @@ def delete_user(ip: str):
 
 #region control flights
 
-def addTrackedFlight(flight: Flight):
+def addTrackedFlight(cursor, conn, flight: Flight):
     if not isinstance(flight, Flight):
         raise TypeError("flight must be Flight type")
 
@@ -130,7 +131,7 @@ def addTrackedFlight(flight: Flight):
     conn.commit()
     return cursor.rowcount > 0
 
-def updateTrackedFlightDetail(ip, flight: Flight):
+def updateTrackedFlightDetail(cursor, conn, ip, flight: Flight):
     if not isinstance(flight, Flight):
         raise TypeError("flight must be Flight type")
     if ip != flight.ip:
@@ -157,7 +158,7 @@ def updateTrackedFlightDetail(ip, flight: Flight):
     """, (user_id, flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price))
     conn.commit()
 
-def updateFlightDetail(updated_flight: Flight, row):
+def updateFlightDetail(cursor, conn, updated_flight: Flight, row):
     if isinstance(updated_flight, Flight):
         cursor.execute("""
             UPDATE tracked_flights
@@ -180,12 +181,13 @@ def updateFlightDetail(updated_flight: Flight, row):
     else:
         raise TypeError("Flight to update wasn't Flight type")
 
-def update_all_flight_details(update_func):
+def update_all_flight_details(cursor,conn, update_func):
     """
     Calls `update_func(flight: Flight)` for each tracked flight in the database.
     The function should return a new instance of `Flight` with updated fields
     (including last_checked, last_checked_price, best_price, best_time, best_airline).
     """
+
     cursor.execute("""
         SELECT id, user_id, departure_airport, arrival_airport, requested_date,
                target_price, last_checked, last_checked_price,
@@ -193,20 +195,20 @@ def update_all_flight_details(update_func):
         FROM tracked_flights
     """)
     all_flights = cursor.fetchall()
-
     for row in all_flights:
         try:
             old_flight = Flight.fromTupel(row)
             updated_flight = update_func(old_flight)
-            updateFlightDetail(updated_flight, row)
+            updateFlightDetail(cursor, conn, updated_flight, row)
         except Exception as e:
             print(f"Failed updating the flight {row[2]} -> {row[3]} in {row[4]}: {e}")
 
-def getUserFlight(ip, departure_airport, arrival_airport, requested_date):
+USER_NOT_FOUND_ERROR = "No user found with IP"
+def getUserFlight(cursor,conn, ip, departure_airport, arrival_airport, requested_date):
     cursor.execute("SELECT id FROM users WHERE ip_address = ?", (ip,))
     result = cursor.fetchone()
     if result is None:
-        raise ValueError(f"No user found with IP {ip}")
+        raise ValueError(f"{USER_NOT_FOUND_ERROR} {ip}")
     user_id = result[0]
 
     cursor.execute("""
@@ -232,7 +234,7 @@ def getUserFlight(ip, departure_airport, arrival_airport, requested_date):
         "best_airline": flight[10]
     }
 
-def getAllUserFlights(ip):
+def getAllUserFlights(cursor,conn, ip):
     cursor.execute("SELECT id FROM users WHERE ip_address = ?", (ip,))
     result = cursor.fetchone()
     if result is None:
@@ -270,7 +272,7 @@ def _restartDataBase():
     if os.path.exists(DATABASEFILE):
         os.remove(DATABASEFILE)
 
-def makeTheTabels():
+def makeTheTabels(cursor, conn):
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -298,16 +300,34 @@ def makeTheTabels():
     conn.commit()
 
 def _mainFromFile():
-    makeTheTabels()
+    conn = sqlite3.connect(DATABASEFILE)
+    #print("Database file:", conn.execute('PRAGMA database_list').fetchall())
+    cursor = conn.cursor()
 
-    """ip = "1.2.3.4"
-    addUser(UserInfo(ip))
-    addTrackedFlight(Flight(ip, "TLV", "CDG", "2025-07-01", 350.00))
-    updateTrackedFlightDetail(ip, Flight(ip, "TLV", "CDG", "2025-07-01", 300.00))
-    updateTrackedFlightDetail(ip, Flight(ip, "TLV", "CDG", "2025-07-02", 300.00))"""
-    print(getAllUsers())
+    makeTheTabels(cursor, conn)
+
+    ip = "1.2.3.5"
+    addUser(cursor, conn, UserInfo(ip))
+    addTrackedFlight(cursor, conn, Flight(ip, "TLV", "CDG", "2025-07-01", 350.00))
+    updateTrackedFlightDetail(cursor, conn, ip, Flight(ip, "TLV", "CDG", "2025-07-01", 300.00))
+    print(getAllUsers(cursor, conn))
+
+    conn.commit()
+    conn.close()
+
+def callFuncFromOtherThread(func=None, *args, **kwargs):
+    with sqlite3.connect(DATABASEFILE) as conn:
+        cursor = conn.cursor()
+        if func is not None:
+            result = func(cursor, conn, *args, **kwargs)
+        else:
+            result = None
+        # אין צורך ב־conn.commit() כאן – הוא קורה אוטומטית אם אין חריגה
+    return result
 
 #endregion
 
 if __name__ == "__main__":
-    _mainFromFile()
+    #_mainFromFile()
+    print (callFuncFromOtherThread(getAllUserFlights, "1.2.3.4"))
+    #print(callFuncFromOtherThread(getAllUsers))

@@ -4,7 +4,8 @@ from datetime import datetime
 import time
 
 def updateAllFlightPrices():
-    db.update_all_flight_details(updateBestFlight)
+    db.callFuncFromOtherThread(db.update_all_flight_details, updateBestFlight)
+    print (db.callFuncFromOtherThread(db.getAllUsers))
 
 def updateBestFlight(flight: db.Flight):
     #find the best flight
@@ -21,12 +22,15 @@ def updateBestFlight(flight: db.Flight):
             bestPrice = curPrice
             bestOffer = offer
 
+    #update the last time update and best last price
+    flight.last_checked = datetime.now().strftime("%-d/%-m/%Y %H:%M")
     flight.last_checked_price = bestPrice #saves the last best offer
     if flight.best_price == None or bestPrice <= float(flight.best_price): #new best price
+        #update the flight details
         flight.best_price = bestPrice
-        flight.best_airline = offer["validatingAirlineCodes"][0]
-        departure = offer["itineraries"][0]["segments"][0]["departure"]["at"]
-        arrival = offer["itineraries"][0]["segments"][0]["arrival"]["at"]
+        flight.best_airline = bestOffer["validatingAirlineCodes"][0]
+        departure = bestOffer["itineraries"][0]["segments"][0]["departure"]["at"]
+        arrival = bestOffer["itineraries"][0]["segments"][0]["arrival"]["at"]
         flight.best_time = f'departure: {datetime.fromisoformat(departure).strftime("%-d/%-m/%Y %H:%M")}, arrival: {datetime.fromisoformat(arrival).strftime("%-d/%-m/%Y %H:%M")}'
 
         #only if its the first time i found it to not disturb every time
@@ -80,8 +84,8 @@ def foundBetterFlight(flight: db.Flight):
     print (f"Found better flight ")
 
 def main():
-    while True:
-        updateAllFlightPrices()
+    #while True:
+    updateAllFlightPrices()
         #time.sleep(3600) #it will be activated when it will work
     #print(db.getAllUsers())
 
