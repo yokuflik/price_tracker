@@ -67,6 +67,11 @@ async def add_user(request: Request):
         else:
             logger.warning(f"warrning in /add_user {body} didnt work")
             raise HTTPException(status_code=500, detail=config.USER_ADD_FAILED)
+    
+    except HTTPException as e:
+        # נותן לשגיאות שיצרת במכוון לעבור הלאה
+        raise e
+    
     except Exception as e:
         #for other errors
         logger.error(f"Error in /add_user: {e}" + (f", body: {body}" if 'body' in locals() else ""))
@@ -93,7 +98,7 @@ async def add_flight(request: Request):
     try:
         body = await request.json()
 
-        flight = config.Flight.from_dict(body)
+        flight = models.Flight.from_dict(body)
         
         success = db.callFuncFromOtherThread(db.addTrackedFlight, flight)
 
@@ -104,6 +109,11 @@ async def add_flight(request: Request):
             logger.warning(f"warning in /add_flight body:{body}")
             raise HTTPException(status_code=500, detail=config.FLIGHT_ADD_FAILED)
         #return {"message": f"{config.FLIGHT_ADDED_SUCCESSFULLY if success else config.FLIGHT_ADD_FAILED}"}
+    
+    except HTTPException as e:
+        # נותן לשגיאות שיצרת במכוון לעבור הלאה
+        raise e
+    
     except Exception as e:
         if config.USER_NOT_FOUND_ERROR in str(e): #user not found
             logger.warning(f"Warning in /add_flight ip: {flight.ip} not found")
@@ -142,7 +152,7 @@ async def update_flight(request: Request):
         body = await request.json()
         flight_id = body.get("flight_id")
         flight = models.Flight.from_dict(body)
-
+        print(flight_id)
         success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight_id, flight)
         if success:
             logger.info(f"Flight updated successfully: {body}")
@@ -151,6 +161,10 @@ async def update_flight(request: Request):
             logger.warning(f"Warning in /update_flight"+ (f", body: {body}" if 'body' in locals() else ""))
             raise HTTPException(status_code=500, detail=config.FLIGHT_UPDATE_FAILED)
         
+    except HTTPException as e:
+        # let the error i ade to keep going
+        raise e
+    
     except ValueError as e:
         if config.USER_NOT_FOUND_ERROR in str(e):
             logger.warning(f"Warningg in /update_flight: user ip:{flight.ip} not found")

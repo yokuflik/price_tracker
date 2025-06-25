@@ -5,7 +5,6 @@ import config
 from models import Flight, UserInfo
 from dotenv import load_dotenv
 
-
 DATA_BASE_FILE = os.getenv("DATA_BASE_FILE", "users.db")
 
 #region debug funcs
@@ -134,6 +133,8 @@ def updateTrackedFlightDetail(cursor, conn, flight_id, flight: Flight):
         flight_id
     ))
     conn.commit()
+    return cursor.rowcount > 0
+
 
 def updateFlightDetail(cursor, conn, updated_flight: Flight, row):
     if isinstance(updated_flight, Flight):
