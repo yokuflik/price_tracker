@@ -7,6 +7,7 @@ import models
 import logging
 import os
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 #region loggs file
 
@@ -56,9 +57,13 @@ def get_all_users():
 @app.post("/add_user")
 async def add_user(request: Request):
     try:
-        body = await request.json()
-
-        user = models.UserInfo.from_dict(body)
+        try:
+            body = await request.json()
+            user = models.UserInfo(**body)
+        except ValidationError as e: #if there is a problem with the keys
+            logger.warning(f"Problem with keys in add user: {body}")
+            raise HTTPException(status_code=422, detail=e.errors())
+        
         success = db.callFuncFromOtherThread(db.addUser, user)
 
         if success:
@@ -77,16 +82,16 @@ async def add_user(request: Request):
         logger.error(f"Error in /add_user: {e}" + (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=500, detail=f"Error in adding user: {e}")
 
-@app.delete("/del_user_by_ip")
-def delete_user(user_ip: str = Query(...)):
-    success = db.callFuncFromOtherThread(db.delete_user, user_ip)
+@app.delete("/del_user_by_email")
+def delete_user(user_email: str = Query(...)):
+    success = db.callFuncFromOtherThread(db.delete_user, user_email)
 
     #return {"message": f"{config.USER_DELETED_SUCCESSFULLY if success else config.USER_DELETE_FAILED}"}
     if success:
-        logger.info(f"User deleted successfully: ip - {user_ip}")
+        logger.info(f"User deleted successfully: email - {user_email}")
         return config.USER_DELETED_SUCCESSFULLY
     else:
-        logger.warning(f"warning in /delete_user ip:{user_ip}")
+        logger.warning(f"warning in /delete_user email: {user_email}")
         raise HTTPException(status_code=500, detail=config.USER_DELETE_FAILED)
 
 #endregion
@@ -98,9 +103,9 @@ async def add_flight(request: Request):
     try:
         body = await request.json()
 
-        flight = models.Flight.from_dict(body)
+        flight = models.Flight(**body)
         
-        success = db.callFuncFromOtherThread(db.addTrackedFlight, flight)
+        success = db.callFuncFromOtherThread(db.addTrackedFlight, flight.user_id, flight)
 
         if success:
             logger.info(f"Flight added successfully: {body}")
@@ -116,7 +121,7 @@ async def add_flight(request: Request):
     
     except Exception as e:
         if config.USER_NOT_FOUND_ERROR in str(e): #user not found
-            logger.warning(f"Warning in /add_flight ip: {flight.ip} not found")
+            logger.warning(f"Warning in /add_flight user_id: {flight.user_id} not found")
             raise HTTPException(status_code=404, detail=config.USER_NOT_FOUND_ERROR)
 
         #for other errors
@@ -124,16 +129,17 @@ async def add_flight(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/get_flights")
-def get_flights(ip: str = Query(...)):
+def get_flights(user_email: str = Query(...)):
     try:
-        return db.callFuncFromOtherThread(db.getAllUserFlights, ip)
+        print(user_email)
+        return db.callFuncFromOtherThread(db.getAllUserFlights, user_email)
     except Exception as e:
         if config.USER_NOT_FOUND_ERROR in str(e): #user not found
-            logger.warning(f"warning in /get_flights: flight {ip} not found")
+            logger.warning(f"warning in /get_flights: user {user_email} not found")
             raise HTTPException(status_code=404, detail=config.USER_NOT_FOUND_ERROR)
         
         #a real error
-        logger.error(f"Error in /get_flights: {e} ip: {ip}")
+        logger.error(f"Error in /get_flights: {e} email: {user_email}")
         raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
 
 @app.delete("/del_flights")
@@ -150,10 +156,8 @@ async def delete_flight(flight_id: float = Query(...)):
 async def update_flight(request: Request):
     try:
         body = await request.json()
-        flight_id = body.get("flight_id")
-        flight = models.Flight.from_dict(body)
-        print(flight_id)
-        success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight_id, flight)
+        flight = models.Flight(**body)
+        success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight.flight_id, flight)
         if success:
             logger.info(f"Flight updated successfully: {body}")
             return config.FLIGHT_UPDATED_SUCCESSFULLY
@@ -167,7 +171,7 @@ async def update_flight(request: Request):
     
     except ValueError as e:
         if config.USER_NOT_FOUND_ERROR in str(e):
-            logger.warning(f"Warningg in /update_flight: user ip:{flight.ip} not found")
+            logger.warning(f"Warningg in /update_flight: user_id: {flight.user_id} not found")
             raise HTTPException(status_code=404, detail=config.USER_NOT_FOUND_ERROR)
         logger.error(f"Error in /update_flight: {e}"+ (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=400, detail=str(e))

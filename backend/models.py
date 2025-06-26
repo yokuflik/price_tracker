@@ -1,4 +1,4 @@
-class Flight:
+"""class Flight:
     def __init__(self, ip: str, departure_airport: str, arrival_airport: str, requested_date: str,
                  target_price: float, last_checked=None, last_checked_price=None,
                  best_price=None, best_time=None, best_airline=None):
@@ -42,4 +42,47 @@ class UserInfo:
     def from_dict(cls, data: dict):
         return cls(
             ip_address=data.get("ip_address")
+        )
+        """
+
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+
+class UserInfo(BaseModel):
+    email: EmailStr
+
+class BestFlightFound(BaseModel):
+    price: float
+    time: str
+    airline: str
+
+class Flight(BaseModel):
+    flight_id: Optional[int] = None  # ייווצר אוטומטית
+    user_id: float
+    departure_airport: str
+    arrival_airport: str
+    requested_date: str  # תוכל להפוך ל־datetime אם תרצה
+    target_price: float
+    last_checked: Optional[str] = None
+    last_price_found: Optional[float] = None
+    notify_on_any_drop: bool = False
+    best_found: Optional[BestFlightFound] = None
+    
+    @classmethod
+    def from_tuple(cls, tup):
+        return cls(
+            flight_id=tup[0],
+            user_id=tup[1],
+            departure_airport=tup[2],
+            arrival_airport=tup[3],
+            requested_date=tup[4],
+            target_price=tup[5],
+            last_checked=tup[6],
+            last_price_found = tup[7],
+            notify_on_any_drop=bool(tup[8]),
+            best_found=BestFlightFound(
+                price=float(tup[9]),
+                time=tup[10],
+                airline=tup[11]
+            ) if tup[9] and tup[10] and tup[11] else None
         )
