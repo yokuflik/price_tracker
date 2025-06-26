@@ -1,5 +1,7 @@
 #this is the flie with all the global variabels
 
+TOKEN_ERROR = "Error with the api token"
+
 USER_NOT_FOUND_ERROR = "No user found with IP"
 CONNECTION_PROBLEM = "Problem with the connection"
 
