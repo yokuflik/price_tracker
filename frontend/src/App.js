@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect} from "react";
 
 // Base URL for backend API calls
 const baseUrl = "http://localhost:8000";
@@ -110,14 +110,129 @@ function UserInput({ value, onChange, onSearch }) {
   );
 };
 
+/*
+function EditingUI({
+  flight,
+  editingFlights,
+  editingFlightsData,
+  setEditingFlightsData,
+  deleteFlight,
+  updateFlightBtnClick,
+}) {
+  return (
+    <li style={{ marginBottom: "15px", fontSize: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "20px",
+          alignItems: "flex-end",
+        }}
+      >
+        { Origin input }
+        <div style={{ display: "flex", flexDirection: "column", minWidth: "200px" }}>
+          <label style={{ marginBottom: "5px", fontWeight: "bold" }}>Origin</label>
+          <AutocompleteInput
+            value={editingFlightsData[flight.flight_id]?.departure_airport || ""}
+            onChange={(val) =>
+              setEditingFlightsData((prev) => ({
+                ...prev,
+                [flight.flight_id]: {
+                  ...prev[flight.flight_id],
+                  departure_airport: val,
+                },
+              }))
+            }
+          />
+        </div>
+
+        {Destination input}
+        <div style={{ display: "flex", flexDirection: "column", minWidth: "200px" }}>
+          <label style={{ marginBottom: "5px", fontWeight: "bold" }}>Destination</label>
+          <AutocompleteInput
+            value={editingFlightsData[flight.flight_id]?.arrival_airport || ""}
+            onChange={(val) =>
+              setEditingFlightsData((prev) => ({
+                ...prev,
+                [flight.flight_id]: {
+                  ...prev[flight.flight_id],
+                  arrival_airport: val,
+                },
+              }))
+            }
+          />
+        </div>
+
+        {Date input }
+        <div style={{ display: "flex", flexDirection: "column", minWidth: "200px" }}>
+          <label style={{ marginBottom: "5px", fontWeight: "bold" }}>Date</label>
+          <input
+            type="date"
+            value={editingFlightsData[flight.flight_id]?.requested_date || ""}
+            onChange={(e) =>
+              setEditingFlightsData((prev) => ({
+                ...prev,
+                [flight.flight_id]: {
+                  ...prev[flight.flight_id],
+                  requested_date: e.target.value,
+                },
+              }))
+            }
+            min={new Date().toISOString().split("T")[0]}
+            style={{ fontSize: 18, padding: "5px", width: "100%", fontFamily: "Arial" }}
+          />
+        </div>
+
+        {Target price input }
+        <div style={{ display: "flex", flexDirection: "column", minWidth: "200px" }}>
+          <label style={{ marginBottom: "5px", fontWeight: "bold" }}>Target Price ($)</label>
+          <input
+            type="number"
+            min="0"
+            step="5"
+            value={editingFlightsData[flight.flight_id]?.target_price || ""}
+            onChange={(e) =>
+              setEditingFlightsData((prev) => ({
+                ...prev,
+                [flight.flight_id]: {
+                  ...prev[flight.flight_id],
+                  target_price: e.target.value,
+                },
+              }))
+            }
+            style={{ fontSize: 18, padding: "5px", width: "100%" }}
+            placeholder="e.g. 300.00"
+          />
+        </div>
+
+        {Action buttons }
+        <button
+          onClick={() => deleteFlight(flight.flight_id)}
+          style={{ fontSize: 20, marginRight: "10px", marginTop: "10px" }}
+        >
+          Delete
+        </button>
+        <button
+          onClick={() => updateFlightBtnClick(flight)}
+          style={{ fontSize: 20, marginTop: "10px" }}
+        >
+          {editingFlights.includes(flight.flight_id) ? "Save" : "Update"}
+        </button>
+      </div>
+    </li>
+  );
+}
+*/
+
 function App() {
   const [userId, setUserId] = useState("");
   const [searchingInpId, setSearchingInpId] = useState("");
-  const [flights, setFlights] = useState([]);
+  const [flights, setFlights] = useState([]); 
+  //const [editingFlightsData, setEditingFlightsData] = useState({});
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false); 
-  const [editingFlights, setEditingFlights] = useState([]);
-
+  //const [editingFlights, setEditingFlights] = useState([]);
+  
   // New flight input states
   const [newOrigin, setNewOrigin] = useState("");
   const [newDestination, setNewDestination] = useState("");
@@ -126,6 +241,22 @@ function App() {
 
   // Single flight item with details and action buttons
   function FlightItem({ flight}) {
+    /*if (editingFlights.includes(flight.flight_id)){
+      //get the editing menu
+      return (
+        <EditingUI
+          key={flight.flight_id}
+          flight={flight}
+          editingFlights={editingFlights}
+          editingFlightsData={editingFlightsData}
+          setEditingFlightsData={setEditingFlightsData}
+          deleteFlight={deleteFlight}
+          updateFlightBtnClick={updateFlightBtnClick}
+        />
+      )
+    }*/
+    
+    //else return the regular view
     return (
       <li style={{ marginBottom: "15px", fontSize: 20 }}>
         <div>
@@ -146,12 +277,12 @@ function App() {
         >
           Delete
         </button>
-        <button
-          onClick={() => updateFlightBtnClick(flight.flight_id)}
+        {/*<button
+          onClick={() => updateFlightBtnClick(flight)}
           style={{ fontSize: 20, marginTop: "10px" }}
         >
           {editingFlights.includes(flight.flight_id) ? "Save" : "Update"}
-        </button>
+        </button>*/}
       </li>
     );
   }
@@ -185,6 +316,7 @@ function App() {
       if (!response.ok) throw new Error("Failed to fetch flights");
       const data = await response.json();
       setFlights(data);
+
       setError("");
       setSubmitted(true);
     } catch (err) {
@@ -207,42 +339,51 @@ function App() {
     }
   };
 
-  const updateFlightBtnClick = async (flightId) => {
-    /*setEditingFlights((prev) =>
-      prev.includes(flightId)
-        ? prev.filter((id) => id !== flightId) // הסר ממצב עריכה
-        : [...prev, flightId] // הוסף למצב עריכה
-    );*/
-    if (editingFlights.includes(flightId)){ 
-      saveFlightUpdate()
+  /*
+  const updateFlightBtnClick = async (flight) => {
+    if (editingFlights.includes(flight)){ 
+      saveFlightUpdate(flight)
     }
     else{
-      openUpdateFlight(flightId)
+      openUpdateFlight(flight)
     }
   };
 
-  const openUpdateFlight = async (flightId) => {
-    alert("open update flight")
-    setEditingFlights()
+  const openUpdateFlight = async (flight) => {
+    setEditingFlights((prev) => [...prev, flight.flight_id]); //add the flight id to the list the view will set outo
+    
+    const flightToEdit = flights.find((f) => f.flight_id === flight.flight_id);
+    setEditingFlightsData((prev) => ({
+      ...prev,
+      [flight.flight_id]: { ...flightToEdit }, // שמור עותק נפרד לעריכה
+    }));
   }
 
-  const saveFlightUpdate = async (flightId) => {
-    setEditingFlights((prev) => prev.filter((id) => id !== flightId)); //remove the editing flight id from the list
-    alert("save flight")
-    /*try {
-      const response = await fetch(`${baseUrl}/del_flights?flight_id=${flightId}`, {
-        method: "DELETE",
+  const saveFlightUpdate = async (flight) => {
+    alert ("save")
+    const updatedFlight = editingFlightsData[flight.flight_id];
+    try {
+      const response = await fetch(`${baseUrl}/update_flight`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedFlight),
       });
-      if (!response.ok) throw new Error("Failed to delete flight");
-      fetchFlights(); // refresh flights list after deletion
+
+      if (!response.ok) throw new Error("Failed to update flight");
+
+      setEditingFlights((prev) => prev.filter((id) => id !== updatedFlight.flight_id));
+      setEditingFlightsData((prev) => {
+        const newData = { ...prev };
+        delete newData[updatedFlight.flight_id];
+        return newData;
+      });
+
+      fetchFlights(); // refresh flights list after updating
     } catch (err) {
       console.error(err);
-      alert("Could not delete flight");
+      alert("Could not update flight");
     }
-    finally {
-      setEditingFlightId(null);
-    }*/
-  }
+  }*/
 
   // Add new flight
   const addFlight = async () => {
