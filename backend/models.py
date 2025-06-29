@@ -45,14 +45,14 @@ class UserInfo:
         )
         """
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, confloat
 from typing import Optional
 
 class UserInfo(BaseModel):
     email: EmailStr
 
 class BestFlightFound(BaseModel):
-    price: float
+    price: confloat (gt=0) #more then zero
     time: str
     airline: str
 
@@ -62,12 +62,13 @@ class Flight(BaseModel):
     departure_airport: str
     arrival_airport: str
     requested_date: str  # תוכל להפוך ל־datetime אם תרצה
-    target_price: float
+    target_price: confloat (gt=0) #more then 0
     last_checked: Optional[str] = None
     last_price_found: Optional[float] = None
     notify_on_any_drop: bool = False
     best_found: Optional[BestFlightFound] = None
     
+
     @classmethod
     def from_tuple(cls, tup):
         return cls(

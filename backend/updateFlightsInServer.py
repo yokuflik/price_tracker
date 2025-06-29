@@ -2,10 +2,63 @@ import dataBaseFile as db
 import amadeus_api
 from datetime import datetime
 import models
+import os
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import logging
+from dotenv import load_dotenv
+
+#region set the logger
+load_dotenv()
+
+LOG_FILE_PATH = os.getenv("UPDATE_IN_SERVER_LOG_FILE_PATH", "update_in_server.log")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+#set the dir
+log_dir = os.path.dirname(LOG_FILE_PATH)
+if log_dir and not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE_PATH, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+#endregion
+
+EMAIL_ADDRESS = os.getenv("API_EMAIL")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+
+def send_email(recipient_email: str, subject: str, body: str) -> bool:
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_ADDRESS
+        msg['To'] = recipient_email
+        msg['Subject'] = subject
+
+        msg.attach(MIMEText(body, 'plain'))
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.send_message(msg)
+
+        logger.info(f"Email sent to user {recipient_email}: {body}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error in sending email to {recipient_email}")
+        return False
 
 def updateAllFlightPrices():
     db.callFuncFromOtherThread(db.update_all_flight_details, updateBestFlight)
-    print (db.callFuncFromOtherThread(db.getAllUsersInfo))
 
 def updateBestFlight(flight: models.Flight):
     #find the best flight
@@ -88,13 +141,13 @@ def _print_flight_options(flight_options):
             print(f"Problem in the processing: {e}")
 
 def foundBetterFlight(flight: models.Flight):
-    print (f"Found better flight for {flight.flight_id}")
+    send_email(db.callFuncFromOtherThread(db.get_user_email_by_id, float(flight.user_id)), 
+               f"Hi \nWe found a flight in the price you wanted - {flight.best_found.time} in {flight.best_found.price}$ by {flight.best_found.airline}")
 
 def main():
     #while True:
     updateAllFlightPrices()
         #time.sleep(3600) #it will be activated when it will work
-    #print(db.getAllUsers())
 
 if __name__ == "__main__":
     main()

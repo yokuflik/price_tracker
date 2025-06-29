@@ -113,8 +113,14 @@ def get_all_users(cursor, conn):
 def get_user_id_by_email(cursor, conn, email: str):
     cursor.execute("SELECT id FROM users where email = ?", (email, ))
     res = cursor.fetchone()
-    if res is None: raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {email}")
+    if res is None: return None
     return float(res[0])
+
+def get_user_email_by_id(cursor, conn, user_id: float):
+    cursor.execute("SELECT email FROM users where id = ?", (user_id, ))
+    res = cursor.fetchone()
+    if res is None: raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {user_id}")
+    return float(res[1])
 
 #endregion
 
@@ -319,7 +325,6 @@ def _mainFromFile():
     #callFuncFromOtherThread(delete_user, "try5@gmail.com")
     #print (callFuncFromOtherThread(getAllUsersInfo))
     
-
 def callFuncFromOtherThread(func=None, *args, **kwargs):
     with sqlite3.connect(DATA_BASE_FILE) as conn:
         cursor = conn.cursor()

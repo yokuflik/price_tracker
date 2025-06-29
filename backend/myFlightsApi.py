@@ -8,12 +8,14 @@ import logging
 import os
 from dotenv import load_dotenv
 from pydantic import ValidationError
+import json
+from datetime import datetime
 
 #region loggs file
 
 load_dotenv()
 
-LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", "api.log")
+LOG_FILE_PATH = os.getenv("API_LOG_FILE_PATH", "api.log")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 #set the dir
@@ -33,6 +35,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 #endregion
+
+#load all the airports
+def getAirportsDict():
+    with open("airports_dict.json") as f:
+        return json.load(f)
+
+airports = getAirportsDict()
 
 app = FastAPI()
 
@@ -60,6 +69,12 @@ async def add_user(request: Request):
         try:
             body = await request.json()
             user = models.UserInfo(**body)
+
+            #check if the user already exists
+            if db.callFuncFromOtherThread(db.get_user_id_by_email, user.email) != None:
+                logger.warning(f"User already exists: {user.email}")
+                raise HTTPException(status_code=422, detail=f"User {user.email} already exists")
+            
         except ValidationError as e: #if there is a problem with the keys
             logger.warning(f"Problem with keys in add user: {body}")
             raise HTTPException(status_code=422, detail=e.errors())
@@ -98,13 +113,43 @@ def delete_user(user_email: str = Query(...)):
 
 #region flights
 
+DATE_FORMAT = "%Y-%m-%d"
+def check_date_format_and_past(date_str: str, fmt=DATE_FORMAT):
+    try:
+        date = datetime.strptime(date_str, fmt)
+    except ValueError:
+        # הפורמט לא תקין
+        return False, None
+    
+    # הפורמט תקין, בודקים אם התאריך עבר
+    is_past = date < datetime.now()
+    return True, is_past
+
+def check_flight(flight : models.Flight):
+    if flight.departure_airport == flight.arrival_airport:
+        raise ValidationError("The departure airport and the arrival airport cant be the same")
+    if flight.departure_airport not in airports:
+        raise ValidationError(f"The departure airport {flight.departure_airport} isnt a supported airport")
+    if flight.arrival_airport not in airports:
+        raise ValidationError(f"The arrival airport {flight.departure_airport} isnt a supported airport")
+    
+    try:
+        db.callFuncFromOtherThread(db.get_user_email_by_id, flight.user_id)
+    except ValueError: #user not finded
+        raise ValidationError(f"User id{flight.user_id} not found")
+    
+    isInFormat, isInPast =  check_date_format_and_past(flight.requested_date)
+    if not isInFormat: raise ValidationError(f"The requested date {flight.requested_date} isnt in the write format - {DATE_FORMAT}")
+    if isInPast: raise ValidationError(f"The requested date {flight.requested_date} cannt be in the past")
+
 @app.post("/add_flight")
 async def add_flight(request: Request):
     try:
         body = await request.json()
 
         flight = models.Flight(**body)
-        
+        check_flight(flight)
+
         success = db.callFuncFromOtherThread(db.addTrackedFlight, flight.user_id, flight)
 
         if success:
@@ -115,7 +160,7 @@ async def add_flight(request: Request):
             raise HTTPException(status_code=500, detail=config.FLIGHT_ADD_FAILED)
         #return {"message": f"{config.FLIGHT_ADDED_SUCCESSFULLY if success else config.FLIGHT_ADD_FAILED}"}
     
-    except HTTPException as e:
+    except (HTTPException, ValidationError) as e:
         # נותן לשגיאות שיצרת במכוון לעבור הלאה
         raise e
     
@@ -157,6 +202,7 @@ async def update_flight(request: Request):
     try:
         body = await request.json()
         flight = models.Flight(**body)
+        check_flight(flight)
         success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight.flight_id, flight)
         if success:
             logger.info(f"Flight updated successfully: {body}")
