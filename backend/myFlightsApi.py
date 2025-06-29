@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 import json
 from datetime import datetime
+import amadeus_api
 
 #region loggs file
 
@@ -225,5 +226,24 @@ async def update_flight(request: Request):
     except Exception as e:
         logger.error(f"Error in /update_flight: {e}"+ (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=500, detail="Internal server error")
+    
+@app.get("/get_flights_options")
+async def getFlightOptions(flight: models.Flight):
+    """
+    returns the flight options and None if a problem occurd
+    """
+    try:
+        result = amadeus_api.search_flights(
+            flight.departure_airport,
+            flight.arrival_airport,
+            flight.requested_date
+        )
+
+        flight_options = result.get("data", [])
+        return flight_options
+
+    except Exception as e:
+        logger.error(f"problom in getting flights {flight.departure_airport} -> {flight.arrival_airport}: {e}")
+        return None
     
 #endregion

@@ -114,7 +114,7 @@ def getFlightOptions(flight: models.Flight):
         return flight_options
 
     except Exception as e:
-        print(f"שגיאה בחיפוש טיסה {flight.departure_airport} -> {flight.arrival_airport}: {e}")
+        logger.error(f"problom in getting flights {flight.departure_airport} -> {flight.arrival_airport}: {e}")
         return []
 
 def _print_flight_options(flight_options):
