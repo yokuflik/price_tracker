@@ -90,18 +90,18 @@ def _createRndUsers(cursor, conn):
 
 #region control users
 
-def addUser(cursor, conn, user: UserInfo):
+def addUser(cursor, conn, user: UserInfo) -> bool:
     cursor.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (user.email,))
     conn.commit()
     return cursor.rowcount > 0
 
-def delete_user(cursor, conn, email: str):
+def delete_user(cursor, conn, email: str) -> bool:
     cursor.execute("DELETE FROM users WHERE email = ?", (email,))
     if cursor.rowcount < 0: raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {email}")
     conn.commit()
     return True
 
-def get_all_users(cursor, conn):
+def get_all_users(cursor, conn) -> list[dict]:
     cursor.execute("SELECT * FROM users")
     rows = cursor.fetchall()
     columns = [desc[0] for desc in cursor.description]  # שמות העמודות
@@ -109,13 +109,13 @@ def get_all_users(cursor, conn):
     users = [dict(zip(columns, row)) for row in rows]   # המרה לרשימת מילונים
     return users
 
-def get_user_id_by_email(cursor, conn, email: str):
+def get_user_id_by_email(cursor, conn, email: str) -> float:
     cursor.execute("SELECT id FROM users where email = ?", (email, ))
     res = cursor.fetchone()
     if res is None: return None
     return float(res[0])
 
-def get_user_email_by_id(cursor, conn, user_id: float):
+def get_user_email_by_id(cursor, conn, user_id: float) -> str:
     cursor.execute("SELECT email FROM users where id = ?", (user_id, ))
     res = cursor.fetchone()
     if res is None: raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {user_id}")
@@ -125,7 +125,7 @@ def get_user_email_by_id(cursor, conn, user_id: float):
 
 #region control flights
 
-def addTrackedFlight(cursor, conn, user_id, flight: Flight):
+def addTrackedFlight(cursor, conn, user_id, flight: Flight) -> bool:
     #set the cest found
     best_price = None
     best_time = None
@@ -163,7 +163,7 @@ def addTrackedFlight(cursor, conn, user_id, flight: Flight):
 
     return cursor.rowcount > 0
 
-def updateTrackedFlightDetail(cursor, conn, flight_id, flight: Flight):
+def updateTrackedFlightDetail(cursor, conn, flight_id, flight: Flight) -> bool:
     best_airline, best_time, best_price = None, None, None
 
     if flight.best_found: #you need to check if its avaliable because its optional
@@ -250,7 +250,7 @@ def update_all_flight_details(cursor, conn, update_func):
         except Exception as e:
             print(f"Failed updating the flight {row[2]} -> {row[3]} in {row[4]}: {e}")
 
-def getAllUserFlights(cursor,conn, email):
+def getAllUserFlights(cursor,conn, email) -> list[dict]:
     cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
     result = cursor.fetchone()
     if result is None:
@@ -267,7 +267,7 @@ def getAllUserFlights(cursor,conn, email):
         Flight.from_tuple(f).model_dump() for f in flights
     ]
 
-def deleteFlightById(cursor, conn, flightId:float):
+def deleteFlightById(cursor, conn, flightId:float) -> bool:
     cursor.execute("DELETE FROM tracked_flights WHERE id = ?", (flightId,))
     conn.commit()
     return cursor.rowcount > 0

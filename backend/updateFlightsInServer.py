@@ -146,8 +146,9 @@ def foundBetterFlight(flight: models.Flight):
 
 def main():
     #while True:
-    updateAllFlightPrices()
+    #updateAllFlightPrices()
         #time.sleep(3600) #it will be activated when it will work
+    pass
 
 if __name__ == "__main__":
     main()

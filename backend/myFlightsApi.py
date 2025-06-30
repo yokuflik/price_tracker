@@ -11,6 +11,7 @@ from pydantic import ValidationError
 import json
 from datetime import datetime
 import amadeus_api
+import bcrypt
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -74,6 +75,7 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 @limiter.limit("2/minute")  # 2 requests in a minute for every ip
 def get_all_users(request: Request):
     try:
+        logger.info("All users list was sended")
         return db.callFuncFromOtherThread(db.get_all_users)
     except Exception as e:
         logger.error(f"Error in /get_all_users: {e}")
@@ -271,4 +273,26 @@ async def getFlightOptions(request: Request, flight: models.Flight):
         logger.error(f"problom in getting flights {flight.departure_airport} -> {flight.arrival_airport}: {e}")
         return None
     
+#endregion
+
+#region passwords
+
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+def check_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+plain_password = "mySuperSecret123"
+hashed = hash_password(plain_password)
+
+print("Hashed:", hashed)
+
+# בדיקה
+if check_password("mySuperSecret123", hashed):
+    print("Password correct ✅")
+else:
+    print("Wrong password ❌")
+
 #endregion
