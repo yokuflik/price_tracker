@@ -5,6 +5,7 @@ import config
 from models import Flight, UserInfo
 import models
 from dotenv import load_dotenv
+import user_flight_history_data_base as flight_history_db
 
 DATA_BASE_FILE = os.getenv("DATA_BASE_FILE", "users.db")
 
@@ -90,8 +91,6 @@ def _createRndUsers(cursor, conn):
 #region control users
 
 def addUser(cursor, conn, user: UserInfo):
-    if not isinstance(user, UserInfo):
-        raise TypeError("User must be UserInfo type")
     cursor.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (user.email,))
     conn.commit()
     return cursor.rowcount > 0
@@ -120,23 +119,17 @@ def get_user_email_by_id(cursor, conn, user_id: float):
     cursor.execute("SELECT email FROM users where id = ?", (user_id, ))
     res = cursor.fetchone()
     if res is None: raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {user_id}")
-    return float(res[1])
+    return res[0]
 
 #endregion
 
 #region control flights
 
 def addTrackedFlight(cursor, conn, user_id, flight: Flight):
-    """cursor.execute("SELECT id FROM users WHERE email = ?", (user_email,))
-    result = cursor.fetchone()
-    if result is None:
-        raise ValueError(f"No user found with email {user_email}")
-    user_id = result[0]"""
-
+    #set the cest found
     best_price = None
     best_time = None
     best_airline = None
-
     if flight.best_found:
         best_price = float(flight.best_found.price)
         best_time = flight.best_found.time
@@ -164,6 +157,10 @@ def addTrackedFlight(cursor, conn, user_id, flight: Flight):
     ))
 
     conn.commit()
+
+    #add to the history
+    flight_history_db.callFuncFromOtherThread(flight_history_db.insert_search, user_id, flight)
+
     return cursor.rowcount > 0
 
 def updateTrackedFlightDetail(cursor, conn, flight_id, flight: Flight):
@@ -316,9 +313,9 @@ def makeTheTabels(cursor, conn):
 
 def _mainFromFile():
     callFuncFromOtherThread(makeTheTabels)
-    #callFuncFromOtherThread(_createRndUsers)
+    callFuncFromOtherThread(_createRndUsers)
     #callFuncFromOtherThread(deleteFlightById, 5)
-    print(callFuncFromOtherThread(getAllUserFlights, "try2@gmail.com"))
+    print(callFuncFromOtherThread(getAllUsersInfo))
     #callFuncFromOtherThread(_createRndUsers)
     #callFuncFromOtherThread(delete_user, "try3@gmail.com")
     #callFuncFromOtherThread(delete_user, "try4@gmail.com")
@@ -326,13 +323,13 @@ def _mainFromFile():
     #print (callFuncFromOtherThread(getAllUsersInfo))
     
 def callFuncFromOtherThread(func=None, *args, **kwargs):
+    #opens the file every time so the file will not stay open when an error occours
     with sqlite3.connect(DATA_BASE_FILE) as conn:
         cursor = conn.cursor()
         if func is not None:
             result = func(cursor, conn, *args, **kwargs)
         else:
             result = None
-        # אין צורך ב־conn.commit() כאן – הוא קורה אוטומטית אם אין חריגה
     return result
 
 #endregion

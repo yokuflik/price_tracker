@@ -3,12 +3,12 @@ import amadeus_api
 from datetime import datetime
 import models
 import os
+from dotenv import load_dotenv
 
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import logging
-from dotenv import load_dotenv
 
 #region set the logger
 load_dotenv()

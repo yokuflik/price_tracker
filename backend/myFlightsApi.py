@@ -12,6 +12,11 @@ import json
 from datetime import datetime
 import amadeus_api
 
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi.responses import JSONResponse
+
 #region loggs file
 
 load_dotenv()
@@ -39,7 +44,8 @@ logger = logging.getLogger(__name__)
 
 #load all the airports
 def getAirportsDict():
-    with open("airports_dict.json") as f:
+    file = os.getenv("AIRPORTS_DICT_FILE")
+    with open(file) as f:
         return json.load(f)
 
 airports = getAirportsDict()
@@ -54,10 +60,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+limiter = Limiter(key_func=get_remote_address)
+app = FastAPI()
+
+# gives the user an error
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"detail": "Too many requests, please slow down."})
+
 #region users
 
 @app.get("/get_all_users")
-def get_all_users():
+@limiter.limit("2/minute")  # 2 requests in a minute for every ip
+def get_all_users(request: Request):
     try:
         return db.callFuncFromOtherThread(db.get_all_users)
     except Exception as e:
@@ -65,6 +80,7 @@ def get_all_users():
         raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
 
 @app.post("/add_user")
+@limiter.limit("3/minute")  # 3 requests in a minute for every ip
 async def add_user(request: Request):
     try:
         try:
@@ -99,7 +115,8 @@ async def add_user(request: Request):
         raise HTTPException(status_code=500, detail=f"Error in adding user: {e}")
 
 @app.delete("/del_user_by_email")
-def delete_user(user_email: str = Query(...)):
+@limiter.limit("3/minute")  # 3 requests in a minute for every ip
+def delete_user(request: Request, user_email: str = Query(...)):
     success = db.callFuncFromOtherThread(db.delete_user, user_email)
 
     #return {"message": f"{config.USER_DELETED_SUCCESSFULLY if success else config.USER_DELETE_FAILED}"}
@@ -117,33 +134,37 @@ def delete_user(user_email: str = Query(...)):
 DATE_FORMAT = "%Y-%m-%d"
 def check_date_format_and_past(date_str: str, fmt=DATE_FORMAT):
     try:
-        date = datetime.strptime(date_str, fmt)
+        date = datetime.strptime(date_str, fmt).date()
     except ValueError:
-        # הפורמט לא תקין
         return False, None
     
     # הפורמט תקין, בודקים אם התאריך עבר
-    is_past = date < datetime.now()
+    is_past = date < datetime.now().date()
     return True, is_past
 
-def check_flight(flight : models.Flight):
+def check_flight(flight: models.Flight):
     if flight.departure_airport == flight.arrival_airport:
-        raise ValidationError("The departure airport and the arrival airport cant be the same")
+        raise ValueError("The departure airport and the arrival airport can't be the same")
+
     if flight.departure_airport not in airports:
-        raise ValidationError(f"The departure airport {flight.departure_airport} isnt a supported airport")
+        raise ValueError(f"The departure airport '{flight.departure_airport}' isn't a supported airport")
+
     if flight.arrival_airport not in airports:
-        raise ValidationError(f"The arrival airport {flight.departure_airport} isnt a supported airport")
+        raise ValueError(f"The arrival airport '{flight.arrival_airport}' isn't a supported airport")
     
     try:
         db.callFuncFromOtherThread(db.get_user_email_by_id, flight.user_id)
-    except ValueError: #user not finded
-        raise ValidationError(f"User id{flight.user_id} not found")
+    except ValueError:  # user not found
+        raise ValueError(f"User id {flight.user_id} not found")
     
-    isInFormat, isInPast =  check_date_format_and_past(flight.requested_date)
-    if not isInFormat: raise ValidationError(f"The requested date {flight.requested_date} isnt in the write format - {DATE_FORMAT}")
-    if isInPast: raise ValidationError(f"The requested date {flight.requested_date} cannt be in the past")
+    isInFormat, isInPast = check_date_format_and_past(flight.requested_date)
+    if not isInFormat:
+        raise ValueError(f"The requested date '{flight.requested_date}' isn't in the right format - {DATE_FORMAT}")
+    if isInPast:
+        raise ValueError(f"The requested date '{flight.requested_date}' cannot be in the past")
 
 @app.post("/add_flight")
+@limiter.limit("10/minute")  # 10 requests in a minute for every ip
 async def add_flight(request: Request):
     try:
         body = await request.json()
@@ -175,7 +196,8 @@ async def add_flight(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/get_flights")
-def get_flights(user_email: str = Query(...)):
+@limiter.limit("10/minute")  # 10 requests in a minute for every ip
+def get_flights(request: Request, user_email: str = Query(...)):
     try:
         print(user_email)
         return db.callFuncFromOtherThread(db.getAllUserFlights, user_email)
@@ -189,7 +211,8 @@ def get_flights(user_email: str = Query(...)):
         raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
 
 @app.delete("/del_flights")
-async def delete_flight(flight_id: float = Query(...)):
+@limiter.limit("30/minute")  # 30 requests in a minute for every ip
+async def delete_flight(request: Request, flight_id: float = Query(...)):
     success = db.callFuncFromOtherThread(db.deleteFlightById, float(flight_id))
     if success:
         logger.info(f"Flight deleted successfully: flight_id - {flight_id}")
@@ -199,6 +222,7 @@ async def delete_flight(flight_id: float = Query(...)):
         raise HTTPException(status_code=500, detail=config.FLIGHT_DELETE_FAILED)
 
 @app.put("/update_flight")
+@limiter.limit("10/minute")  # 10 requests in a minute for every ip
 async def update_flight(request: Request):
     try:
         body = await request.json()
@@ -228,7 +252,8 @@ async def update_flight(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
     
 @app.get("/get_flights_options")
-async def getFlightOptions(flight: models.Flight):
+@limiter.limit("5/minute")  # 5 requests in a minute for every ip
+async def getFlightOptions(request: Request, flight: models.Flight):
     """
     returns the flight options and None if a problem occurd
     """
