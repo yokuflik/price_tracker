@@ -3,6 +3,7 @@ from typing import Optional
 
 class UserInfo(BaseModel):
     email: EmailStr
+    hash_password: str
 
 class BestFlightFound(BaseModel):
     price: confloat (gt=0) #more then zero

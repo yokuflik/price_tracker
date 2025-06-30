@@ -4,3 +4,6 @@ python-dotenv==1.1.0
 requests==2.32.4
 pydantic[email]==2.11.7
 cachetools==6.1.0
+slowapi==0.1.9
+bcrypt==4.3.0
+pandas==2.3.0

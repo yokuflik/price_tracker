@@ -1,0 +1,34 @@
+
+services:
+  api:
+    build: .
+    container_name: flight_api
+    command: uvicorn api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+
+  tester:
+    build: .
+    container_name: test_flight_api
+    command: python testApi.py
+    depends_on:
+      - api
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+
+  updater:
+    build: .
+    container_name: flight_updater
+    command: python updateFlightsInServer.py
+    depends_on:
+      - api
+    volumes:
+      - .:/app
+    env_file:
+      - .env

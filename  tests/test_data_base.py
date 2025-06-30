@@ -8,7 +8,7 @@ import models
 
 email = "dae@gmail.com"
 def test_add_user():
-    assert db.callFuncFromOtherThread(db.addUser, models.UserInfo(email=email))
+    assert db.callFuncFromOtherThread(db.addUser, models.UserInfo(email=email, hash_password="hashed"))
 
 def test_add_update_flight():
     user_id = db.callFuncFromOtherThread(db.get_user_id_by_email, email)

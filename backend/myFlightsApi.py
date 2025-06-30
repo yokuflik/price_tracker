@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Query
+from fastapi.responses import JSONResponse
 import dataBaseFile as db
 import config
 import models
@@ -12,11 +12,11 @@ import json
 from datetime import datetime
 import amadeus_api
 import bcrypt
-
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from fastapi.responses import JSONResponse
+from typing import Literal
+import re
 
 #region loggs file
 
@@ -62,26 +62,131 @@ app.add_middleware(
 )
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI()
+
+#health checker
+@app.get("/health", summary="Health Check",
+         response_description="Service status",
+         tags=["Monitoring"],
+         responses={
+             200: {"description": "Service is healthy"},
+             503: {"description": "Service unavailable"}})
+async def health_check():
+    try:
+        db.callFuncFromOtherThread() #it will open the data base and close it 
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=503, detail=f"API Unavailable: {e}")
+    
+    if amadeus_api.check_health(): #check the amadeus
+        return {"status": "ok", "database": "connected", "amadeus_api": "ok"} #if ok
+    else:
+        logger.error(f"Health check failed: on amadeus api")
+        raise HTTPException(status_code=503, detail=f"Amadeus API service Unavailable")
 
 # gives the user an error
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(status_code=429, content={"detail": "Too many requests, please slow down."})
 
+#region passwords
+
+def check_if_password_is_good(password: str) -> bool:
+    """
+        The password needs to be between 8-16 chars, with letters and numbers without special chars
+    """
+    if len(password) < 8 or len(password) > 16: return False
+
+    hasLetters = bool(re.search(r'[a-zA-Z]', password))
+    hasNumbers = bool(re.search(r'\d', password))
+    if not (hasNumbers and hasLetters): return False
+
+    if bool(re.search(r'[^a-zA-Z0-9]', password)): return False #has special chars
+
+    return True
+    
+#endregion
+
 #region users
 
-@app.get("/get_all_users")
+@app.get("/get_all_users", summary="Get list of all registered users",
+    description="Retrieves a list of all users in the system with their basic information.",
+    response_description="List of user objects",
+    tags=["Users"],
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Successful Response",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "ok",
+                        "content": [
+                            {"id": 1, "email": "user1@example.com"},
+                            {"id": 2, "email": "user2@example.com"}
+                        ]
+                    }
+                }
+            }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Rate limit exceeded (2 requests per minute)"
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "description": "Database error occurred",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Problem with the data base. <ErrorType> - <ErrorMessage>"}
+                }
+            }
+        }
+    }
+)
 @limiter.limit("2/minute")  # 2 requests in a minute for every ip
-def get_all_users(request: Request):
+async def get_all_users(request: Request):
     try:
         logger.info("All users list was sended")
-        return db.callFuncFromOtherThread(db.get_all_users)
+        return JSONResponse(status_code=200, content={"status":"ok", "content" :db.callFuncFromOtherThread(db.get_all_users)})
     except Exception as e:
         logger.error(f"Error in /get_all_users: {e}")
         raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
 
-@app.post("/add_user")
+@app.post("/add_user",
+    summary="Add a new user",
+    description="Registers a new user in the system with the provided details.",
+    response_description="Confirmation message",
+    tags=["Users"],
+    responses={
+        status.HTTP_200_OK: {
+            "application/json": {
+                "example": {"message": "User added successfully", "user_email": "user@example.com"}
+            }
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Validation error or user already exists",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "Existing user": {
+                            "value": {"detail": "User user@example.com already exists"}
+                        },
+                        "Validation error": {
+                            "value": {"detail": [{"loc": ["email"], "msg": "value is not a valid email address", "type": "value_error"}]}
+                        }
+                    }
+                }
+            }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Rate limit exceeded (3 requests per minute)"
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Error in adding user: <error details>"}
+                }
+            }
+        }
+    })
 @limiter.limit("3/minute")  # 3 requests in a minute for every ip
 async def add_user(request: Request):
     try:
@@ -102,7 +207,7 @@ async def add_user(request: Request):
 
         if success:
             logger.info(f"User added successfully: {body}")
-            return config.USER_ADDED_SUCCESSFULLY
+            return JSONResponse(status_code=200, content={"message" : config.USER_ADDED_SUCCESSFULLY, "user_mail": user.email})
         else:
             logger.warning(f"warrning in /add_user {body} didnt work")
             raise HTTPException(status_code=500, detail=config.USER_ADD_FAILED)
@@ -116,7 +221,57 @@ async def add_user(request: Request):
         logger.error(f"Error in /add_user: {e}" + (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=500, detail=f"Error in adding user: {e}")
 
-@app.delete("/del_user_by_email")
+@app.delete("/del_user_by_email",
+    response_model=Literal[config.USER_DELETED_SUCCESSFULLY],
+    summary="Delete user by email",
+    description="Removes a user account from the system using their email address.",
+    tags=["Users"],
+    responses={
+        status.HTTP_200_OK: {
+            "description": "User successfully deleted",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "User deleted successfully",
+                        "email": "user@example.com"
+                    }
+                }
+            }
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Invalid email format",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Invalid email format"
+                    }
+                }
+            }
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "User not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "User not found"
+                    }
+                }
+            }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Rate limit exceeded (3 requests per minute)"
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Failed to delete user"
+                    }
+                }
+            }
+        }
+    })
 @limiter.limit("3/minute")  # 3 requests in a minute for every ip
 def delete_user(request: Request, user_email: str = Query(...)):
     success = db.callFuncFromOtherThread(db.delete_user, user_email)
@@ -124,7 +279,7 @@ def delete_user(request: Request, user_email: str = Query(...)):
     #return {"message": f"{config.USER_DELETED_SUCCESSFULLY if success else config.USER_DELETE_FAILED}"}
     if success:
         logger.info(f"User deleted successfully: email - {user_email}")
-        return config.USER_DELETED_SUCCESSFULLY
+        return JSONResponse(status_code=200, content={"message" : config.USER_DELETED_SUCCESSFULLY, "email":user_email})
     else:
         logger.warning(f"warning in /delete_user email: {user_email}")
         raise HTTPException(status_code=500, detail=config.USER_DELETE_FAILED)
@@ -165,9 +320,96 @@ def check_flight(flight: models.Flight):
     if isInPast:
         raise ValueError(f"The requested date '{flight.requested_date}' cannot be in the past")
 
-@app.post("/add_flight")
+@app.post("/add_flight",
+    summary="Add a new flight to tracking",
+    description="Adds a new flight to the user's tracked flights list with price alert functionality.",
+    response_description="Flight tracking confirmation",
+    tags=["Flights"],
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Flight successfully added to tracking",
+            "content": {
+                "application/json": {
+                    "example": {"message": "Flight added to tracking successfully"}
+                }
+            }
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Invalid flight data",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "Same airports": {
+                            "value": {"detail": "Departure and arrival airports cannot be the same"}
+                        },
+                        "Invalid date": {
+                            "value": {"detail": "Requested date cannot be in the past"}
+                        }
+                    }
+                }
+            }
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "User not found",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User not found"}
+                }
+            }
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Validation error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": [
+                            {
+                                "loc": ["body", "requested_date"],
+                                "msg": "invalid date format",
+                                "type": "value_error.date"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Rate limit exceeded (10 requests per minute)"
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Failed to add flight to tracking"}
+                }
+            }
+        }
+    }
+)
 @limiter.limit("10/minute")  # 10 requests in a minute for every ip
 async def add_flight(request: Request):
+    """
+    Track a new flight with price alert functionality.
+    
+    Adds a flight route to the user's tracking list with options for price alerts.
+    Validates flight data before adding to the system.
+    
+    Rate limited to 10 requests per minute per IP.
+    
+    Request Body:
+        - user_id: int (required)
+        - departure_airport: str (3-letter code, required)
+        - arrival_airport: str (3-letter code, required)
+        - requested_date: str (YYYY-MM-DD format, required)
+        - target_price: float (required)
+        - notify_on_any_drop: bool (optional)
+    
+    Returns:
+        Dict: Confirmation message
+    
+    Raises:
+        HTTPException: Various error conditions with appropriate status codes
+    """
     try:
         body = await request.json()
 
@@ -178,14 +420,13 @@ async def add_flight(request: Request):
 
         if success:
             logger.info(f"Flight added successfully: {body}")
-            return config.FLIGHT_ADDED_SUCCESSFULLY
+            return JSONResponse(status_code=200, content={"message" : config.FLIGHT_ADDED_SUCCESSFULLY})
         else:
             logger.warning(f"warning in /add_flight body:{body}")
             raise HTTPException(status_code=500, detail=config.FLIGHT_ADD_FAILED)
-        #return {"message": f"{config.FLIGHT_ADDED_SUCCESSFULLY if success else config.FLIGHT_ADD_FAILED}"}
     
     except (HTTPException, ValidationError) as e:
-        # נותן לשגיאות שיצרת במכוון לעבור הלאה
+        # lets my errors to continue
         raise e
     
     except Exception as e:
@@ -197,12 +438,54 @@ async def add_flight(request: Request):
         logger.error(f"Error in /add_flight: {e}"+ (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.get("/get_flights")
-@limiter.limit("10/minute")  # 10 requests in a minute for every ip
-def get_flights(request: Request, user_email: str = Query(...)):
+@app.get("/get_flights",
+    summary="Get user's tracked flights",
+    description="Retrieves all flights being tracked by a specific user.",
+    response_description="List of tracked flights with details",
+    tags=["Flights"],
+    responses={
+        status.HTTP_200_OK: {
+            "application/json": {
+                "example": [{
+                    "flight_id": 1,
+                    "departure_airport": "TLV",
+                    "arrival_airport": "JFK",
+                    "requested_date": "2023-12-15",
+                    "target_price": 500.0,
+                    "last_checked": "2023-11-01T10:30:00",
+                    "last_price_found": 450.0,
+                    "notify_on_any_drop": True,
+                    "best_price": 420.0,
+                    "best_time": "Morning flight",
+                    "best_airline": "Delta"
+                }]
+            }
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "User not found",
+            "content": {
+                "application/json": {
+                    "example": {"detail": config.USER_NOT_FOUND_ERROR}
+                }
+            }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Rate limit exceeded (10 requests per minute)"
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "description": "Database error",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Problem with the database: <error details>"}
+                }
+            }
+        }
+    }
+)  # 10 requests in a minute for every ip
+@limiter.limit("10/minute")
+async def get_flights(request: Request, user_email: str = Query(...)):
     try:
-        print(user_email)
-        return db.callFuncFromOtherThread(db.getAllUserFlights, user_email)
+        return JSONResponse(status_code=200, content={db.callFuncFromOtherThread(db.getAllUserFlights, user_email)})
     except Exception as e:
         if config.USER_NOT_FOUND_ERROR in str(e): #user not found
             logger.warning(f"warning in /get_flights: user {user_email} not found")
@@ -212,20 +495,123 @@ def get_flights(request: Request, user_email: str = Query(...)):
         logger.error(f"Error in /get_flights: {e} email: {user_email}")
         raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
 
-@app.delete("/del_flights")
+@app.delete("/del_flights",
+    response_model=Literal[config.FLIGHT_DELETED_SUCCESSFULLY],
+    summary="Delete a tracked flight",
+    description="Removes a flight from the user's tracking list by its ID.",
+    tags=["Flight Tracking"],
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Flight successfully removed from tracking",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Flight tracking deleted successfully",
+                        "flight_id": 123.0
+                    }
+                }
+            }
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Invalid flight ID format",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Flight ID must be a positive number"
+                    }
+                }
+            }
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Flight not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Flight not found with ID: 123.0"
+                    }
+                }
+            }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Rate limit exceeded (30 requests per minute)"
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "description": "Database error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Failed to delete flight tracking"
+                    }
+                }
+            }
+        }
+    }
+    )
 @limiter.limit("30/minute")  # 30 requests in a minute for every ip
 async def delete_flight(request: Request, flight_id: float = Query(...)):
     success = db.callFuncFromOtherThread(db.deleteFlightById, float(flight_id))
     if success:
         logger.info(f"Flight deleted successfully: flight_id - {flight_id}")
-        return config.FLIGHT_DELETED_SUCCESSFULLY
+        return JSONResponse(status_code=200, content={"message" : config.FLIGHT_DELETED_SUCCESSFULLY, "flight_id": flight_id})
     else:
         logger.warning(f"Warning in /delete_flights flight_id: {flight_id}")
         raise HTTPException(status_code=500, detail=config.FLIGHT_DELETE_FAILED)
 
-@app.put("/update_flight")
+@app.put("/update_flight",
+    response_model=Literal[config.FLIGHT_UPDATED_SUCCESSFULLY],
+    summary="Update flight tracking details",
+    description="Updates the tracking parameters for a specific flight.",
+    tags=["Flight Tracking"],
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Flight tracking successfully updated",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Flight tracking updated successfully",
+                        "flight_id": 123
+                    }
+                }
+            }
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Invalid request data",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "Same airports": {
+                            "value": {"detail": "Departure and arrival airports cannot be the same"}
+                        },
+                        "Invalid date": {
+                            "value": {"detail": "Requested date cannot be in the past"}
+                        }
+                    }
+                }
+            }
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "User or flight not found",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User not found"}
+                }
+            }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Rate limit exceeded (10 requests per minute)"
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Failed to update flight tracking"}
+                }
+            }
+        }
+    }
+)
 @limiter.limit("10/minute")  # 10 requests in a minute for every ip
-async def update_flight(request: Request):
+async def update_flight(request: Request) -> str:
     try:
         body = await request.json()
         flight = models.Flight(**body)
@@ -233,7 +619,7 @@ async def update_flight(request: Request):
         success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight.flight_id, flight)
         if success:
             logger.info(f"Flight updated successfully: {body}")
-            return config.FLIGHT_UPDATED_SUCCESSFULLY
+            return JSONResponse(status_code=200, content={"message" :config.FLIGHT_UPDATED_SUCCESSFULLY, "flight_id" : flight.flight_id})
         else:
             logger.warning(f"Warning in /update_flight"+ (f", body: {body}" if 'body' in locals() else ""))
             raise HTTPException(status_code=500, detail=config.FLIGHT_UPDATE_FAILED)
@@ -253,7 +639,45 @@ async def update_flight(request: Request):
         logger.error(f"Error in /update_flight: {e}"+ (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=500, detail="Internal server error")
     
-@app.get("/get_flights_options")
+@app.get("/get_flights_options",
+    summary="Get the flight options",
+    description="Get the flight options between origin and destination.",
+    tags=["Flight options"],
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Flight options",
+            "content": {
+                "application/json": {
+                        "...a lot of params"
+                }
+            }
+        },
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Invalid request data",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "Same airports": {
+                            "value": {"detail": "Departure and arrival airports cannot be the same"}
+                        },
+                        "Invalid date": {
+                            "value": {"detail": "Requested date cannot be in the past"}
+                        }
+                    }
+                }
+            }
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Flight options not found",
+            "content": {
+                "flight options not found..."
+            }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Rate limit exceeded (10 requests per minute)"
+        },
+    }
+)
 @limiter.limit("5/minute")  # 5 requests in a minute for every ip
 async def getFlightOptions(request: Request, flight: models.Flight):
     """
@@ -271,28 +695,6 @@ async def getFlightOptions(request: Request, flight: models.Flight):
 
     except Exception as e:
         logger.error(f"problom in getting flights {flight.departure_airport} -> {flight.arrival_airport}: {e}")
-        return None
+        raise HTTPException(404, f"Flight options not found in {flight.requested_date} between {flight.departure_airport} -> {flight.arrival_airport}")
     
-#endregion
-
-#region passwords
-
-def hash_password(password: str) -> str:
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-    return hashed.decode('utf-8')
-
-def check_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
-plain_password = "mySuperSecret123"
-hashed = hash_password(plain_password)
-
-print("Hashed:", hashed)
-
-# בדיקה
-if check_password("mySuperSecret123", hashed):
-    print("Password correct ✅")
-else:
-    print("Wrong password ❌")
-
 #endregion

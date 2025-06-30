@@ -6,6 +6,7 @@ from models import Flight, UserInfo
 import models
 from dotenv import load_dotenv
 import user_flight_history_data_base as flight_history_db
+import bcrypt
 
 DATA_BASE_FILE = os.getenv("DATA_BASE_FILE", "users.db")
 
@@ -19,10 +20,10 @@ def getAllUsersInfo(cursor, conn):
 def getUserStringFromTuple(cursor,conn, tpl):
     if not isinstance(tpl, tuple):
         raise TypeError("Tpl has to be a tuple")
-    if len(tpl) != 2:
+    if len(tpl) != 3:
         raise ValueError("Expected a user tuple with 2 elements (id, email)")
 
-    user_id, email = tpl
+    user_id, email, hash_password = tpl
 
     cursor.execute("""
         SELECT id, departure_airport, arrival_airport, requested_date, target_price,
@@ -33,7 +34,7 @@ def getUserStringFromTuple(cursor,conn, tpl):
     """, (user_id,))
     flights = cursor.fetchall()
 
-    result = f"id: {user_id}, email: {email}\n"
+    result = f"id: {user_id}, email: {email}, hash_password: {hash_password}\n"
     if flights:
         for f in flights:
             result += (
@@ -68,7 +69,7 @@ def _createRndUsers(cursor, conn):
     import random
     for i in range(5):
         try_email = f"try{i+1}@gmail.com"
-        callFuncFromOtherThread(addUser, UserInfo(email=try_email))
+        callFuncFromOtherThread(addUser, UserInfo(email=try_email, hash_password=hash_password(f"password{i}")))
         userId = callFuncFromOtherThread(get_user_id_by_email, try_email)
         airports = [
     "JFK",  # John F. Kennedy International Airport, USA
@@ -90,8 +91,16 @@ def _createRndUsers(cursor, conn):
 
 #region control users
 
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+def check_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+
 def addUser(cursor, conn, user: UserInfo) -> bool:
-    cursor.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (user.email,))
+    cursor.execute("INSERT OR IGNORE INTO users (email, hash_password) VALUES (?, ?)", (user.email,user.hash_password,))
     conn.commit()
     return cursor.rowcount > 0
 
@@ -281,15 +290,14 @@ def _restartDataBase():
         os.remove(DATA_BASE_FILE)
 
 def makeTheTabels(cursor, conn):
-    # טבלת משתמשים לפי אימייל
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL
+        email TEXT UNIQUE NOT NULL,
+        hash_password TEXT NOT NULL
     )
     """)
 
-    # טבלת טיסות במעקב לפי משתמש
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS tracked_flights (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -327,11 +335,9 @@ def callFuncFromOtherThread(func=None, *args, **kwargs):
     with sqlite3.connect(DATA_BASE_FILE) as conn:
         cursor = conn.cursor()
         if func is not None:
-            result = func(cursor, conn, *args, **kwargs)
-        else:
-            result = None
-    return result
-
+            return func(cursor, conn, *args, **kwargs)
+    return None
+        
 #endregion
 
 if __name__ == "__main__":

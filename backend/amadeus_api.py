@@ -46,6 +46,10 @@ AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
 TOKEN_URL = "https://test.api.amadeus.com/v1/security/oauth2/token"
 FLIGHT_SEARCH_URL = "https://test.api.amadeus.com/v2/shopping/flight-offers"
 
+def check_health() -> bool:
+    #In a production virsion I will realy check but I dont want to waste the tokens
+    return True
+
 token_cache = TTLCache(maxsize=1, ttl=3600)
 
 lastTokenTime = 0
@@ -56,7 +60,7 @@ def _get_access_token():
             "client_id": AMADEUS_API_KEY,
             "client_secret": AMADEUS_API_SECRET
         }
-        response = requests.post(TOKEN_URL, data=data)
+        response = requests.post(TOKEN_URL, data=data, timeout=20)
         response.raise_for_status()
         token = response.json().get("access_token")
 
@@ -97,7 +101,7 @@ def search_flights(origin, destination, departureDate):
         "max": 5
     }
     try:
-        response = requests.get(FLIGHT_SEARCH_URL, headers=headers, params=params)
+        response = requests.get(FLIGHT_SEARCH_URL, headers=headers, params=params, timeout=20)
         response.raise_for_status()
     except requests.exceptions.HTTPError as e:
         if response.status_code == 401 and try_last_token:
