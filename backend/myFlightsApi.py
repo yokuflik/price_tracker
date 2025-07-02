@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Request, HTTPException, status, Query
+from fastapi import FastAPI, Request, HTTPException, status, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import dataBaseFile as db
 import config
 import models
@@ -17,6 +18,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from typing import Literal
 import re
+import jwt
+from datetime import datetime, timedelta, timezone
 
 #region loggs file
 
@@ -88,26 +91,10 @@ async def health_check():
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(status_code=429, content={"detail": "Too many requests, please slow down."})
 
-#region passwords
-
-def check_if_password_is_good(password: str) -> bool:
-    """
-        The password needs to be between 8-16 chars, with letters and numbers without special chars
-    """
-    if len(password) < 8 or len(password) > 16: return False
-
-    hasLetters = bool(re.search(r'[a-zA-Z]', password))
-    hasNumbers = bool(re.search(r'\d', password))
-    if not (hasNumbers and hasLetters): return False
-
-    if bool(re.search(r'[^a-zA-Z0-9]', password)): return False #has special chars
-
-    return True
-    
-#endregion
-
 #region users
 
+#a debug func
+"""
 @app.get("/get_all_users", summary="Get list of all registered users",
     description="Retrieves a list of all users in the system with their basic information.",
     response_description="List of user objects",
@@ -141,16 +128,82 @@ def check_if_password_is_good(password: str) -> bool:
     }
 )
 @limiter.limit("2/minute")  # 2 requests in a minute for every ip
-async def get_all_users(request: Request):
+async def get_all_users(request: Request, token):
     try:
         logger.info("All users list was sended")
         return JSONResponse(status_code=200, content={"status":"ok", "content" :db.callFuncFromOtherThread(db.get_all_users)})
     except HTTPException as e:
         logger.error(f"Error in /get_all_users: {e}")
         raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
+"""
 
-@app.post("/add_user",
-    summary="Add a new user",
+#region tokens and passwords
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ALGORITHM = "HS256"
+SECRET_KEY = os.getenv("TOKEN_SECRET_KEY")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+def check_if_password_is_good(password: str) -> bool:
+    """
+        The password needs to be between 8-16 chars, with letters and numbers without special chars
+    """
+    if len(password) < 8 or len(password) > 16: return False
+
+    hasLetters = bool(re.search(r'[a-zA-Z]', password))
+    hasNumbers = bool(re.search(r'\d', password))
+    if not (hasNumbers and hasLetters): return False
+
+    if bool(re.search(r'[^a-zA-Z0-9]', password)): return False #has special chars
+
+    return True
+    
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+def check_user_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire}) # expire date
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def decode_access_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise Exception("Token has expired")
+    except jwt.InvalidTokenError:
+        raise Exception("Invalid token")
+
+def get_current_user_id(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = decode_access_token(token)
+        user_id: int = int(payload.get("sub"))
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+        return user_id
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Could not validate credentials: {e}")
+
+def check_if_mail_matches_user_id(email: str, user_id:int) -> bool:
+    if db.callFuncFromOtherThread(db.get_user_id_by_email, email) == user_id and user_id is not None:
+        return True
+    return False
+
+#endregion
+
+@app.post("/register_user",
+    summary="Register a new user",
     description="Registers a new user in the system with the provided details.",
     response_description="Confirmation message",
     tags=["Users"],
@@ -188,20 +241,25 @@ async def get_all_users(request: Request):
         }
     })
 @limiter.limit("3/minute")  # 3 requests in a minute for every ip
-async def add_user(request: Request):
+async def register_user(request: Request):
     try:
-        try:
-            body = await request.json()
-            user = models.UserInfo(**body)
+        body = await request.json()
+        #user = models.UserInfo(**body)
+        email = body.get("email")
+        password = body.get("password")
+        #check if the password is ok the passwird isnt hashed yet
+        if not check_if_password_is_good(password):
+            logger.warning(f"Password not good")
+            raise HTTPException(status_code=422, detail=f"Password not good")
 
-            #check if the user already exists
-            if db.callFuncFromOtherThread(db.get_user_id_by_email, user.email) != None:
-                logger.warning(f"User already exists: {user.email}")
-                raise HTTPException(status_code=422, detail=f"User {user.email} already exists")
-            
-        except ValidationError as e: #if there is a problem with the keys
-            logger.warning(f"Problem with keys in add user: {body}")
-            raise HTTPException(status_code=422, detail=e.errors())
+        #hash the password
+        #user.hash_password = hash_password(user.hash_password)
+
+        user = models.UserInfo(email=email, hash_password=hash_password(password))
+        #check if the user already exists
+        if db.callFuncFromOtherThread(db.get_user_id_by_email, user.email) != None:
+            logger.warning(f"User already exists: {user.email}")
+            raise HTTPException(status_code=422, detail=f"User {user.email} already exists")
         
         success = db.callFuncFromOtherThread(db.addUser, user)
 
@@ -213,14 +271,46 @@ async def add_user(request: Request):
             raise HTTPException(status_code=500, detail=config.USER_ADD_FAILED)
     
     except HTTPException as e:
-        # נותן לשגיאות שיצרת במכוון לעבור הלאה
         raise e
     
+    except ValidationError as e: #if there is a problem with the keys
+        logger.warning(f"Problem with keys in add user: {body}")
+        raise HTTPException(status_code=422, detail=e.errors())
+        
     except Exception as e:
         #for other errors
         logger.error(f"Error in /add_user: {e}" + (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=500, detail=f"Error in adding user: {e}")
 
+@app.post("/login", response_model=dict)
+@limiter.limit("20/minute")  # 20 requests in a minute for every ip
+async def login(request: Request):
+    try:
+        body = await request.json()
+        #user = models.UserInfo(**body)
+        email = body.get("email")
+        password = body.get("password")
+
+        #check if the user exists
+        if db.callFuncFromOtherThread(db.get_user_id_by_email, email) == None:
+            logger.warning(f"User not exists: {email}")
+            raise HTTPException(status_code=400, detail=f"User {email} not exists")
+        
+        #check if the password is correct the password now in the user isnt hashed
+        hashed = db.callFuncFromOtherThread(db.get_user_hashed_password_by_email, email)
+        if check_user_password(password, hashed):
+            #login the user
+            access_token_data = {"sub": str(db.callFuncFromOtherThread(db.get_user_id_by_email, email))} #the token conatines the user id
+            access_token = create_access_token(access_token_data)
+            return {"access_token": access_token, "token_type": "bearer"}
+        else:
+            logger.warning(f"Password wrong: mail - {email} password - {hashed}")
+            raise HTTPException(status_code=400, detail=f"Incorrect username or password")
+        
+    except ValidationError as e: #if there is a problem with the keys
+        logger.warning(f"Problem with keys in add user: {body}")
+        raise HTTPException(status_code=422, detail=e.errors())
+        
 @app.delete("/del_user_by_email",
     response_model=Literal[config.USER_DELETED_SUCCESSFULLY],
     summary="Delete user by email",
@@ -273,7 +363,11 @@ async def add_user(request: Request):
         }
     })
 @limiter.limit("3/minute")  # 3 requests in a minute for every ip
-def delete_user(request: Request, user_email: str = Query(...)):
+def delete_user(request: Request, user_email: str = Query(...), current_user_id: int = Depends(get_current_user_id)):
+    
+    if not check_if_mail_matches_user_id(user_email, current_user_id): #if someone else trys to delete a user that isnt him
+        raise HTTPException(status_code=403, detail="You are not authorized to add flights to other users.")
+
     success = db.callFuncFromOtherThread(db.delete_user, user_email)
 
     #return {"message": f"{config.USER_DELETED_SUCCESSFULLY if success else config.USER_DELETE_FAILED}"}
@@ -386,7 +480,7 @@ def check_flight(flight: models.Flight):
     }
 )
 @limiter.limit("10/minute")  # 10 requests in a minute for every ip
-async def add_flight(request: Request):
+async def add_flight(request: Request, current_user_id: int = Depends(get_current_user_id)):
     """
     Track a new flight with price alert functionality.
     
@@ -415,6 +509,10 @@ async def add_flight(request: Request):
         flight = models.Flight(**body)
         check_flight(flight)
 
+        #check if the flight id matches the token id
+        if flight.user_id != current_user_id:
+            raise HTTPException(status_code=403, detail="You are not authorized to add flights to other users.")
+        
         success = db.callFuncFromOtherThread(db.addTrackedFlight, flight.user_id, flight)
 
         if success:
@@ -480,9 +578,11 @@ async def add_flight(request: Request):
     }
 )  # 10 requests in a minute for every ip
 @limiter.limit("10/minute")
-async def get_flights(request: Request, user_email: str = Query(...)):
+async def get_flights(request: Request, user_email: str = Query(...), current_user_id: int = Depends(get_current_user_id)):
+    if not check_if_mail_matches_user_id(user_email, current_user_id):
+        raise HTTPException(status_code=403, detail="You are not authorized to get flights from other users.")
     try:
-        return JSONResponse(status_code=200, content={db.callFuncFromOtherThread(db.getAllUserFlights, user_email)})
+        return JSONResponse(status_code=200, content={"flights" : db.callFuncFromOtherThread(db.getAllUserFlights, user_email)})
     except Exception as e:
         if config.USER_NOT_FOUND_ERROR in str(e): #user not found
             logger.warning(f"warning in /get_flights: user {user_email} not found")
@@ -545,8 +645,14 @@ async def get_flights(request: Request, user_email: str = Query(...)):
     }
     )
 @limiter.limit("30/minute")  # 30 requests in a minute for every ip
-async def delete_flight(request: Request, flight_id: float = Query(...)):
-    success = db.callFuncFromOtherThread(db.deleteFlightById, float(flight_id))
+async def delete_flight(request: Request, flight_id: int = Query(...), current_user_id: int = Depends(get_current_user_id)):
+    
+    user_id = db.callFuncFromOtherThread(db.get_user_id_by_flight_id, flight_id)
+    #check if user id and token id matches
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You are not authorized to delete flights that belongs other users.")
+    
+    success = db.callFuncFromOtherThread(db.deleteFlightById, int(flight_id))
     if success:
         logger.info(f"Flight deleted successfully: flight_id - {flight_id}")
         return JSONResponse(status_code=200, content={"message" : config.FLIGHT_DELETED_SUCCESSFULLY, "flight_id": flight_id})
@@ -608,10 +714,15 @@ async def delete_flight(request: Request, flight_id: float = Query(...)):
     }
 )
 @limiter.limit("10/minute")  # 10 requests in a minute for every ip
-async def update_flight(request: Request) -> str:
+async def update_flight(request: Request, current_user_id: int = Depends(get_current_user_id)) -> str:
     try:
         body = await request.json()
         flight = models.Flight(**body)
+
+        #check if user id and token id matches
+        if flight.user_id != current_user_id:
+            raise HTTPException(status_code=403, detail="You are not authorized to delete flights that belongs other users.")
+    
         check_flight(flight)
         success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight.flight_id, flight)
         if success:
@@ -676,7 +787,7 @@ async def update_flight(request: Request) -> str:
     }
 )
 @limiter.limit("5/minute")  # 5 requests in a minute for every ip
-async def getFlightOptions(request: Request, flight: models.Flight):
+async def getFlightOptions(request: Request, flight: models.Flight, current_user_id: int = Depends(get_current_user_id)):
     """
     returns the flight options and None if a problem occurd
     """

@@ -138,6 +138,6 @@ try:
     #_restartDataBase()
     callFuncFromOtherThread(make_the_tabel)
     #_createRndData()
-    _printAllData()
+    #_printAllData()
 except Exception as e:
     logger.error(f"Error in data base: {e}")

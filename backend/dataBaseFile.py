@@ -114,7 +114,7 @@ def getAllUsersInfo(cursor, conn):
     rows = cursor.fetchall()
     return "\n".join(getUserStringFromTuple(cursor,conn, row) for row in rows)
 
-def getUserStringFromTuple(cursor,conn, tpl : tuple):
+def getUserStringFromTuple(cursor,conn, tpl : tuple, max_items: int = 6):
     if len(tpl) != 3:
         raise ValueError("Expected a user tuple with 2 elements (id, email)")
 
@@ -129,8 +129,12 @@ def getUserStringFromTuple(cursor,conn, tpl : tuple):
             flight_data = dict(f) #get all the flight items like a dict and then add them to the result
 
             result += f"--- Flight {i+1} ---\n"
+            j =0
             for key, value in flight_data.items():
                 result += f"  {key}: {value}\n"
+                j+=1
+                if j == max_items:
+                    break
             result += "\n"
     else:
         result += "  No flights tracked.\n"
@@ -164,18 +168,16 @@ def _createRndUsers():
 
 #region control users
 
-def hash_password(password: str) -> str:
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-    return hashed.decode('utf-8')
-
-def check_user_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
-
 def addUser(cursor, conn, user: UserInfo) -> bool:
     cursor.execute("INSERT OR IGNORE INTO users (email, hash_password) VALUES (?, ?)", (user.email,user.hash_password,))
     conn.commit()
     return cursor.rowcount > 0
+
+def get_user_hashed_password_by_email(cursor, conn, email: str) -> str:
+    cursor.execute("SELECT hash_password FROM users where email = ?", (email, ))
+    res = cursor.fetchone()
+    if res is None: return None
+    return res[0]
 
 def delete_user(cursor, conn, email: str) -> bool:
     cursor.execute("DELETE FROM users WHERE email = ?", (email,))
@@ -201,6 +203,12 @@ def get_user_email_by_id(cursor, conn, user_id: int) -> str:
     cursor.execute("SELECT email FROM users where id = ?", (user_id, ))
     res = cursor.fetchone()
     if res is None: raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {user_id}")
+    return res[0]
+
+def get_user_id_by_flight_id(cursor, conn, flight_id: int) -> int:
+    cursor.execute("SELECT user_id FROM tracked_flights where flight_id = ?", (flight_id, ))
+    res = cursor.fetchone()
+    if res is None: raise ValueError(f"Flight {flight_id} not found")
     return res[0]
 
 #endregion
@@ -280,7 +288,7 @@ def getAllUserFlights(cursor,conn, email) -> list[dict]:
     
     flight_tuples = cursor.fetchall()
     res = []
-    columns = ["user_id", "flight_id" ] + queries.ALL_FLIGHT_COLUMNS
+    columns = ["flight_id", "user_id"] + queries.ALL_FLIGHT_COLUMNS
     for flight_tuple in flight_tuples:
         flight_dict = dict(zip(columns, flight_tuple))
         res.append(flight_dict)
@@ -314,15 +322,16 @@ def _makeTheTabels(cursor, conn):
     conn.commit()
 
 def _mainFromFile():
-    _restartDataBase()
+    #_restartDataBase()
     callFuncFromOtherThread(_makeTheTabels)
-    _createRndUsers()
+    #_createRndUsers()
     #print(callFuncFromOtherThread(getAllUserFlights, "try5@gmail.com"))
-    print(callFuncFromOtherThread(updateTrackedFlightDetail, 5, Flight(flight_id=5, user_id=5, departure_airport="BKK", 
-                                                                       arrival_airport="TLV", requested_date="2025-07-03", target_price=1200)))
+    #print(callFuncFromOtherThread(updateTrackedFlightDetail, 5, Flight(flight_id=5, user_id=5, departure_airport="BKK", 
+     #                                                                  arrival_airport="TLV", requested_date="2025-07-03", target_price=1200)))
     #print(callFuncFromOtherThread(getAllUserFlights, "try5@gmail.com"))
     #callFuncFromOtherThread(delete_user, "try3@gmail.com")
-    #print (callFuncFromOtherThread(getAllUsersInfo))
+    #print (callFuncFromOtherThread(getAllUserFlights, "hey@gmail.com"))
+    print (callFuncFromOtherThread(getAllUsersInfo))
     
 def callFuncFromOtherThread(func=None, *args, **kwargs):
     #opens the file every time so the file will not stay open when an error occours
