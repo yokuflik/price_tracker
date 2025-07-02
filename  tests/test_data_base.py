@@ -30,7 +30,7 @@ def test_add_update_flight():
     
 def test_get_user_info():
     user_id = db.callFuncFromOtherThread(db.get_user_id_by_email, email)
-    user_email = db.callFuncFromOtherThread(db.get_user_email_by_id, float(user_id))
+    user_email = db.callFuncFromOtherThread(db.get_user_email_by_id, int(user_id))
 
     assert user_email == email
 

@@ -1,43 +1,40 @@
-from pydantic import BaseModel, EmailStr, confloat
+from pydantic import BaseModel, EmailStr, confloat, Field
 from typing import Optional
+from datetime import date, datetime
 
 class UserInfo(BaseModel):
     email: EmailStr
     hash_password: str
 
 class BestFlightFound(BaseModel):
-    price: confloat (gt=0) #more then zero
-    time: str
-    airline: str
+    price: Optional[confloat(gt=0)] = None
+    time: Optional[str] = None
+    airline: Optional[str] = None
+
+DEPARTMENTS = ["Tourists", "Business", "First"]
+class MoreCriteria(BaseModel):
+    connection: int = 0
+    max_connection_hours: Optional[float] = None
+    department: str = Field(default=DEPARTMENTS[0])
+
+    is_round_trip: bool = True
+    return_date: Optional[str] = None
+
+    flexible_days_before: int = 0
+    flexible_days_after: int = 0
+
+    custom_name: Optional[str] = None
 
 class Flight(BaseModel):
-    flight_id: Optional[int] = None  # ייווצר אוטומטית
-    user_id: float
+    flight_id: Optional[int] = None
+    user_id: int
     departure_airport: str
     arrival_airport: str
-    requested_date: str  # תוכל להפוך ל־datetime אם תרצה
-    target_price: confloat (gt=0) #more then 0
+    requested_date: str
+    target_price: confloat(gt=0) #more then 0
     last_checked: Optional[str] = None
     last_price_found: Optional[float] = None
     notify_on_any_drop: bool = False
-    best_found: Optional[BestFlightFound] = None
+    more_criteria: MoreCriteria = Field(default_factory=MoreCriteria)
+    best_found: BestFlightFound = Field(default_factory=BestFlightFound)
     
-
-    @classmethod
-    def from_tuple(cls, tup):
-        return cls(
-            flight_id=tup[0],
-            user_id=tup[1],
-            departure_airport=tup[2],
-            arrival_airport=tup[3],
-            requested_date=tup[4],
-            target_price=tup[5],
-            last_checked=tup[6],
-            last_price_found = tup[7],
-            notify_on_any_drop=bool(tup[8]),
-            best_found=BestFlightFound(
-                price=float(tup[9]),
-                time=tup[10],
-                airline=tup[11]
-            ) if tup[9] and tup[10] and tup[11] else None
-        )

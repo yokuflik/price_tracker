@@ -6,9 +6,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "b
 import models
 import dataBaseFile as db
 import myFlightsApi as api
+import config
 
 def test_flight_check():
-    now = str(datetime.now().date().strftime(api.DATE_FORMAT))
+    now = str(datetime.now().date().strftime(config.DATE_FORMAT))
     user_id = db.callFuncFromOtherThread(db.get_all_users)[0]["id"]
 
     flight = models.Flight(user_id=user_id, departure_airport="BKK", arrival_airport="CNG", requested_date=now, target_price=500)

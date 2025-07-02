@@ -7,8 +7,105 @@ import models
 from dotenv import load_dotenv
 import user_flight_history_data_base as flight_history_db
 import bcrypt
+from fastapi import HTTPException
 
 DATA_BASE_FILE = os.getenv("DATA_BASE_FILE", "users.db")
+
+#region queries
+
+class queries:
+
+    FLIGHT_COLUMNS = ["departure_airport", "arrival_airport", "requested_date", "target_price",
+            "last_checked","last_price_found", "notify_on_any_drop"]
+
+    MORE_CRITERIA_COLUMNS = ["num_connections", "max_connection_hours", "department", "is_round_trip", 
+            "return_date", "flexible_days_before", "flexible_days_after","custom_name"]
+
+    BEST_FOUND_COLUMNS = ["best_price", "best_time", "best_airline"]
+
+    ALL_FLIGHT_COLUMNS = FLIGHT_COLUMNS + MORE_CRITERIA_COLUMNS + BEST_FOUND_COLUMNS
+    
+    create_tracked_flight_tabel_query = """
+        CREATE TABLE IF NOT EXISTS tracked_flights (
+            flight_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            departure_airport VARCHAR(3) NOT NULL,
+            arrival_airport VARCHAR(3) NOT NULL,
+            requested_date DATE NOT NULL,
+            target_price DECIMAL(10, 2) NOT NULL,
+            last_checked DATETIME,
+            last_price_found DECIMAL(10, 2),
+            notify_on_any_drop BOOLEAN DEFAULT FALSE,
+
+            num_connections INTEGER,
+            max_connection_hours REAL,
+            department VARCHAR(255),
+            is_round_trip BOOLEAN,
+            return_date DATE,
+            flexible_days_before INTEGER,
+            flexible_days_after INTEGER,
+            custom_name TEXT,
+
+            best_price DECIMAL(10, 2),
+            best_time VARCHAR(5),
+            best_airline VARCHAR(255),
+
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    """
+
+    get_flight_info_by_user_id_query = f"""
+        SELECT flight_id, {', '.join(ALL_FLIGHT_COLUMNS)}
+        FROM tracked_flights
+        WHERE user_id = ?
+    """
+
+    add_flight_query = f"""
+            INSERT OR IGNORE INTO tracked_flights (
+                user_id, {', '.join(ALL_FLIGHT_COLUMNS)}
+            )
+            VALUES ({", ".join(["?"] * (len(ALL_FLIGHT_COLUMNS)+1))})
+        """
+
+    update_tracked_flight_query = f"""
+            UPDATE tracked_flights
+            SET {'= ?, '.join(ALL_FLIGHT_COLUMNS) + " = ?"}
+            WHERE flight_id = ?
+        """
+
+    get_all_flights_info_query = f"""
+            SELECT flight_id, 
+                user_id, {', '.join(ALL_FLIGHT_COLUMNS)}
+            FROM tracked_flights
+        """
+
+    def _applyQueryOnFlightValues(cursor, query: str, flight: Flight, on_start_additional_values:tuple = (), on_end_additional_values:tuple = ()):
+        values = on_start_additional_values + (
+            flight.departure_airport,
+            flight.arrival_airport,
+            flight.requested_date,
+            flight.target_price,
+            flight.last_checked,
+            flight.last_price_found,
+            int(flight.notify_on_any_drop),  # boolean to 0/1
+
+            flight.more_criteria.connection,         # 9
+            flight.more_criteria.max_connection_hours, # 10
+            flight.more_criteria.department,         # 11
+            int(flight.more_criteria.is_round_trip),      #12
+            flight.more_criteria.return_date,        # 13
+            flight.more_criteria.flexible_days_before, # 14
+            flight.more_criteria.flexible_days_after, # 15
+            flight.more_criteria.custom_name,        # 16
+
+            flight.best_found.price,                         # 17
+            flight.best_found.time,                          # 18
+            flight.best_found.airline                        # 19
+        ) + on_end_additional_values
+
+        cursor.execute(query, values)
+
+#endregion
 
 #region debug funcs
 
@@ -17,55 +114,30 @@ def getAllUsersInfo(cursor, conn):
     rows = cursor.fetchall()
     return "\n".join(getUserStringFromTuple(cursor,conn, row) for row in rows)
 
-def getUserStringFromTuple(cursor,conn, tpl):
-    if not isinstance(tpl, tuple):
-        raise TypeError("Tpl has to be a tuple")
+def getUserStringFromTuple(cursor,conn, tpl : tuple):
     if len(tpl) != 3:
         raise ValueError("Expected a user tuple with 2 elements (id, email)")
 
     user_id, email, hash_password = tpl
 
-    cursor.execute("""
-        SELECT id, departure_airport, arrival_airport, requested_date, target_price,
-            last_checked,last_price_found, notify_on_any_drop,
-            best_price, best_time, best_airline
-        FROM tracked_flights
-        WHERE user_id = ?
-    """, (user_id,))
+    cursor.execute(queries.get_flight_info_by_user_id_query, (user_id,))
     flights = cursor.fetchall()
 
     result = f"id: {user_id}, email: {email}, hash_password: {hash_password}\n"
     if flights:
-        for f in flights:
-            result += (
-                f"  flight_id: {f[0]}\n"
-                f"  departure airport: {f[1]}\n"
-                f"  arrival airport: {f[2]}\n"
-                f"  requested date: {f[3]}\n"
-                f"  target price: {f[4]}\n"
-            )
-            try:
-                last_checked_str = f[5] if f[5] else "None"
-            except ValueError:
-                last_checked_str = f"Invalid date format {f[5]}"
-            last_price_found = f[6]
-            notify_on_any_drop = bool(f[7])
-            best_price = f[8] if f[8] else "None"
-            best_time = f[9] if f[9] else "None"
-            best_airline = f[10] if f[10] else "None"
+        for i, f in enumerate(flights):
+            flight_data = dict(f) #get all the flight items like a dict and then add them to the result
 
-            result += (
-                f"  last checked: {last_checked_str}\n"
-                f"  last best price found: {last_price_found}\n"
-                f"  notify on any drop: {notify_on_any_drop}\n"
-                f"  best price: {best_price}, time: {best_time}, airline: {best_airline}\n\n"
-            )
+            result += f"--- Flight {i+1} ---\n"
+            for key, value in flight_data.items():
+                result += f"  {key}: {value}\n"
+            result += "\n"
     else:
         result += "  No flights tracked.\n"
 
     return result.strip()
 
-def _createRndUsers(cursor, conn):
+def _createRndUsers():
     import random
     for i in range(5):
         try_email = f"try{i+1}@gmail.com"
@@ -85,7 +157,8 @@ def _createRndUsers(cursor, conn):
 ]
         callFuncFromOtherThread(addTrackedFlight, userId, Flight(user_id=userId, 
                                 departure_airport=airports[random.randint(0,9)], arrival_airport=airports[random.randint(0,9)], 
-                                requested_date="2025-07-01", target_price=random.randint(6,12)*50))
+                                requested_date="2025-07-07", target_price=random.randint(6,12)*50, 
+                                more_criteria = models.MoreCriteria(), best_found = models.BestFlightFound()))
 
 #endregion
 
@@ -96,7 +169,7 @@ def hash_password(password: str) -> str:
     hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
     return hashed.decode('utf-8')
 
-def check_password(password: str, hashed: str) -> bool:
+def check_user_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
 def addUser(cursor, conn, user: UserInfo) -> bool:
@@ -118,13 +191,13 @@ def get_all_users(cursor, conn) -> list[dict]:
     users = [dict(zip(columns, row)) for row in rows]   # המרה לרשימת מילונים
     return users
 
-def get_user_id_by_email(cursor, conn, email: str) -> float:
+def get_user_id_by_email(cursor, conn, email: str) -> int:
     cursor.execute("SELECT id FROM users where email = ?", (email, ))
     res = cursor.fetchone()
     if res is None: return None
-    return float(res[0])
+    return int(res[0])
 
-def get_user_email_by_id(cursor, conn, user_id: float) -> str:
+def get_user_email_by_id(cursor, conn, user_id: int) -> str:
     cursor.execute("SELECT email FROM users where id = ?", (user_id, ))
     res = cursor.fetchone()
     if res is None: raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {user_id}")
@@ -134,128 +207,62 @@ def get_user_email_by_id(cursor, conn, user_id: float) -> str:
 
 #region control flights
 
-def addTrackedFlight(cursor, conn, user_id, flight: Flight) -> bool:
-    #set the cest found
-    best_price = None
-    best_time = None
-    best_airline = None
-    if flight.best_found:
-        best_price = float(flight.best_found.price)
-        best_time = flight.best_found.time
-        best_airline = flight.best_found.airline
-
-    cursor.execute("""
-        INSERT OR IGNORE INTO tracked_flights (
-            user_id, departure_airport, arrival_airport, requested_date, target_price,
-            last_checked,last_price_found, notify_on_any_drop,
-            best_price, best_time, best_airline
-        )
-        VALUES (?, ?, ?, ?, ?, ?,?, ?, ?, ?, ?)
-    """, (
-        user_id,
-        flight.departure_airport,
-        flight.arrival_airport,
-        flight.requested_date,
-        flight.target_price,
-        flight.last_checked,
-        flight.last_price_found,
-        int(flight.notify_on_any_drop),  # boolean to 0/1
-        best_price,
-        best_time,
-        best_airline
-    ))
+def addTrackedFlight(cursor, conn,user_id:int, flight: Flight) -> bool:
+    #check if the user exists
+    get_user_email_by_id(cursor,conn, user_id) #if it will now found it will raise a value error
+    
+    queries._applyQueryOnFlightValues(cursor, queries.add_flight_query, flight, on_start_additional_values=(user_id,))
 
     conn.commit()
 
     #add to the history
-    flight_history_db.callFuncFromOtherThread(flight_history_db.insert_search, user_id, flight)
+    flight_history_db.callFuncFromOtherThread(flight_history_db.insert_search, flight)
 
     return cursor.rowcount > 0
 
-def updateTrackedFlightDetail(cursor, conn, flight_id, flight: Flight) -> bool:
-    best_airline, best_time, best_price = None, None, None
+def updateTrackedFlightDetail(cursor, conn, flight_id: int, flight: Flight) -> bool:
+    if flight_id != flight.flight_id: raise ValueError (f"You cannot update a flight with a differnt flight id flight_id given: {flight_id}, flight.flight_id{flight.flight_id}")
+    
+    queries._applyQueryOnFlightValues(cursor, queries.update_tracked_flight_query, flight, on_end_additional_values=(flight_id,))
 
-    if flight.best_found: #you need to check if its avaliable because its optional
-        best_price = float(flight.best_found.price)
-        best_time = flight.best_found.time
-        best_airline = flight.best_found.airline
-
-    cursor.execute("""
-        UPDATE tracked_flights
-        SET departure_airport = ?,
-            arrival_airport = ?,
-            requested_date = ?,
-            target_price = ?,
-            last_checked = ?,
-            last_price_found = ?,
-            notify_on_any_drop = ?,
-            best_price = ?,
-            best_time = ?,
-            best_airline = ?
-        WHERE id = ?
-    """, (
-        flight.departure_airport,
-        flight.arrival_airport,
-        flight.requested_date,
-        flight.target_price,
-        flight.last_checked,
-        flight.last_price_found,
-        flight.notify_on_any_drop,
-        best_price,
-        best_time,
-        best_airline,
-        flight_id
-    ))
     conn.commit()
+
+    #add to the history
+    flight_history_db.callFuncFromOtherThread(flight_history_db.insert_update, flight)
+
     return cursor.rowcount > 0
 
-def update_all_flight_details(cursor, conn, update_func):
+def update_all_flight_details(cursor, conn, update_func) -> None:
     """
     Calls `update_func(flight: Flight)` for each tracked flight in the database.
     The function should return a new instance of `Flight` with updated fields.
     """
 
-    cursor.execute("""
-        SELECT id, 
-            user_id, 
-            departure_airport, 
-            arrival_airport, 
-            requested_date,
-            target_price, 
-            last_checked,
-            last_price_found,
-            notify_on_any_drop, 
-            best_price, 
-            best_time, 
-            best_airline
-        FROM tracked_flights
-    """)
+    cursor.execute(queries.get_all_flights_info_query)
 
     all_flights = cursor.fetchall()
+
     for row in all_flights:
         try:
-            # הכנסת השדה של ID (flight_id) מתוך השורה
-            flight_id = row[0]
-            user_id = row[1]
+            flight_columns = ["user_id", "flight_id" ] + queries.FLIGHT_COLUMNS
+            flight_columns_index = len(flight_columns)
+            more_criteria_index= flight_columns_index + len(queries.MORE_CRITERIA_COLUMNS)
+            best_found_index = more_criteria_index + len(queries.BEST_FOUND_COLUMNS)
 
-            old_flight = Flight(
-                flight_id=flight_id,
-                user_id=user_id,
-                departure_airport=row[2],
-                arrival_airport=row[3],
-                requested_date=row[4],
-                target_price=row[5],
-                last_checked=row[6],
-                last_price_found = row[7],
-                notify_on_any_drop=bool(row[8]),
-                best_found=models.BestFlightFound(
-                    price=float(row[9]), time=row[10], airline=row[11]
-                ) if row[9] and row[10] and row[11] else None
-            )
+            flight_dict = dict(zip(flight_columns, row[:flight_columns_index]))
+            
+            more_criteria_dict = dict(zip(queries.MORE_CRITERIA_COLUMNS, row[flight_columns_index:more_criteria_index]))
+
+            best_found_dict = dict(zip(queries.BEST_FOUND_COLUMNS, row[more_criteria_index:best_found_index]))
+
+            flight_dict["more_criteria"] = more_criteria_dict
+            flight_dict["best_found"] = best_found_dict
+
+            old_flight = Flight(**flight_dict)
 
             updated_flight = update_func(old_flight)
-            updateTrackedFlightDetail(cursor, conn, flight_id, updated_flight)
-
+            updateTrackedFlightDetail(cursor, conn, old_flight.flight_id, updated_flight)
+            
         except Exception as e:
             print(f"Failed updating the flight {row[2]} -> {row[3]} in {row[4]}: {e}")
 
@@ -263,7 +270,7 @@ def getAllUserFlights(cursor,conn, email) -> list[dict]:
     cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
     result = cursor.fetchone()
     if result is None:
-        raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {email}")
+        raise ValueError(f"{config.USER_NOT_FOUND_ERROR}: {email}")
     user_id = result[0]
 
     cursor.execute("""
@@ -271,13 +278,17 @@ def getAllUserFlights(cursor,conn, email) -> list[dict]:
         WHERE user_id = ?
     """, (user_id,))
     
-    flights = cursor.fetchall()
-    return [ # makes a json of all the user flights
-        Flight.from_tuple(f).model_dump() for f in flights
-    ]
+    flight_tuples = cursor.fetchall()
+    res = []
+    columns = ["user_id", "flight_id" ] + queries.ALL_FLIGHT_COLUMNS
+    for flight_tuple in flight_tuples:
+        flight_dict = dict(zip(columns, flight_tuple))
+        res.append(flight_dict)
 
-def deleteFlightById(cursor, conn, flightId:float) -> bool:
-    cursor.execute("DELETE FROM tracked_flights WHERE id = ?", (flightId,))
+    return res
+
+def deleteFlightById(cursor, conn, flightId:int) -> bool:
+    cursor.execute("DELETE FROM tracked_flights WHERE flight_id = ?", (flightId,))
     conn.commit()
     return cursor.rowcount > 0
 
@@ -289,7 +300,7 @@ def _restartDataBase():
     if os.path.exists(DATA_BASE_FILE):
         os.remove(DATA_BASE_FILE)
 
-def makeTheTabels(cursor, conn):
+def _makeTheTabels(cursor, conn):
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -298,45 +309,32 @@ def makeTheTabels(cursor, conn):
     )
     """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS tracked_flights (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        departure_airport TEXT NOT NULL,
-        arrival_airport TEXT NOT NULL,
-        requested_date TEXT NOT NULL,
-        target_price REAL NOT NULL,
-        last_checked NULL,
-        last_price_found, 
-        notify_on_any_drop BOOLEAN NOT NULL DEFAULT 0,
-        best_price REAL,
-        best_time TEXT,
-        best_airline TEXT,
-        UNIQUE (user_id, departure_airport, arrival_airport, requested_date),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-    """)
+    cursor.execute(queries.create_tracked_flight_tabel_query)
 
     conn.commit()
 
 def _mainFromFile():
-    callFuncFromOtherThread(makeTheTabels)
-    callFuncFromOtherThread(_createRndUsers)
-    #callFuncFromOtherThread(deleteFlightById, 5)
-    print(callFuncFromOtherThread(getAllUsersInfo))
-    #callFuncFromOtherThread(_createRndUsers)
+    _restartDataBase()
+    callFuncFromOtherThread(_makeTheTabels)
+    _createRndUsers()
+    #print(callFuncFromOtherThread(getAllUserFlights, "try5@gmail.com"))
+    print(callFuncFromOtherThread(updateTrackedFlightDetail, 5, Flight(flight_id=5, user_id=5, departure_airport="BKK", 
+                                                                       arrival_airport="TLV", requested_date="2025-07-03", target_price=1200)))
+    #print(callFuncFromOtherThread(getAllUserFlights, "try5@gmail.com"))
     #callFuncFromOtherThread(delete_user, "try3@gmail.com")
-    #callFuncFromOtherThread(delete_user, "try4@gmail.com")
-    #callFuncFromOtherThread(delete_user, "try5@gmail.com")
     #print (callFuncFromOtherThread(getAllUsersInfo))
     
 def callFuncFromOtherThread(func=None, *args, **kwargs):
     #opens the file every time so the file will not stay open when an error occours
-    with sqlite3.connect(DATA_BASE_FILE) as conn:
-        cursor = conn.cursor()
-        if func is not None:
-            return func(cursor, conn, *args, **kwargs)
-    return None
+    try:
+        with sqlite3.connect(DATA_BASE_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            if func is not None:
+                return func(cursor, conn, *args, **kwargs)
+        return None
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Problem in data base {e}")
         
 #endregion
 

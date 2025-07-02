@@ -145,7 +145,7 @@ async def get_all_users(request: Request):
     try:
         logger.info("All users list was sended")
         return JSONResponse(status_code=200, content={"status":"ok", "content" :db.callFuncFromOtherThread(db.get_all_users)})
-    except Exception as e:
+    except HTTPException as e:
         logger.error(f"Error in /get_all_users: {e}")
         raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
 
@@ -288,8 +288,7 @@ def delete_user(request: Request, user_email: str = Query(...)):
 
 #region flights
 
-DATE_FORMAT = "%Y-%m-%d"
-def check_date_format_and_past(date_str: str, fmt=DATE_FORMAT):
+def check_date_format_and_past(date_str: str, fmt=config.DATE_FORMAT):
     try:
         date = datetime.strptime(date_str, fmt).date()
     except ValueError:
@@ -428,12 +427,10 @@ async def add_flight(request: Request):
     except (HTTPException, ValidationError) as e:
         # lets my errors to continue
         raise e
-    
+    except ValueError:
+        logger.warning(f"Warning in /add_flight user_id: {flight.user_id} not found")
+        raise HTTPException(status_code=404, detail=config.USER_NOT_FOUND_ERROR)
     except Exception as e:
-        if config.USER_NOT_FOUND_ERROR in str(e): #user not found
-            logger.warning(f"Warning in /add_flight user_id: {flight.user_id} not found")
-            raise HTTPException(status_code=404, detail=config.USER_NOT_FOUND_ERROR)
-
         #for other errors
         logger.error(f"Error in /add_flight: {e}"+ (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=500, detail="Internal server error")

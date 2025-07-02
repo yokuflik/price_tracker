@@ -3,8 +3,32 @@ import os
 from dotenv import load_dotenv
 import models
 import pandas as pd
+import logging
 
 HISTORY_DATA_BASE_FILE = os.getenv("USER_FLIGHT_HISTORY_DATA_BASE_FILE", "user_flight_history.db")
+
+#region logger
+
+FLIGHT_HISTORY_DB_LOG_FILE_PATH = os.getenv("UPDATE_IN_SERVER_LOG_FILE_PATH", "update_in_server.log")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+#set the dir
+log_dir = os.path.dirname(FLIGHT_HISTORY_DB_LOG_FILE_PATH)
+if log_dir and not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler(FLIGHT_HISTORY_DB_LOG_FILE_PATH, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+#endregion
 
 #region debug
 
@@ -39,13 +63,19 @@ def _createRndUsers():
 def _createRndData():
     us = _createRndUsers()
     for i in us:
-        callFuncFromOtherThread(insert_search, i[0], i[1])
+        callFuncFromOtherThread(insert_search, i[1])
 
 def _printAllData():
-    conn = sqlite3.connect(HISTORY_DATA_BASE_FILE)
-    df = pd.read_sql_query("SELECT * FROM flight_search_history;", conn)
-    print(df)
-    conn.close()
+    with sqlite3.connect(HISTORY_DATA_BASE_FILE) as conn:
+
+        print ("\nFlight search history:\n")
+        df = pd.read_sql_query("SELECT * FROM flight_search_history;", conn)
+        print(df)
+
+        print ("\nFlight update history:\n")
+        df = pd.read_sql_query("SELECT * FROM flight_update_history;", conn)
+        print(df)
+
 
 #endregion
 
@@ -56,7 +86,7 @@ def callFuncFromOtherThread(func, *args, **kwargs):
             cursor = conn.cursor()
             func(cursor, *args, **kwargs)
     except Exception as e:
-        print (f"Problem with history data base: {e}")
+        logger.error(f"Error in data base: {e}")
 
 def make_the_tabel(cursor):
     #make the tabel if not exsist
@@ -64,27 +94,50 @@ def make_the_tabel(cursor):
     CREATE TABLE IF NOT EXISTS flight_search_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-        user_email TEXT NOT NULL,
         origin TEXT NOT NULL,
         destination TEXT NOT NULL,
-        depart_date TEXT NOT NULL,
-        target_price TEXT NOT NULL
+        depart_date DATE NOT NULL,
+        target_price REAL NOT NULL
     );
     """
     cursor.execute(create_table_query)
 
-def insert_search(cursor, user_id, flight: models.Flight):
+    cursor.execute("""
+
+    CREATE TABLE IF NOT EXISTS flight_update_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        origin TEXT NOT NULL,
+        destination TEXT NOT NULL,
+        depart_date DATE NOT NULL,
+        target_price REAL NOT NULL
+    );"""
+    )
+
+def insert_search(cursor, flight: models.Flight):
     insert_query = """
-    INSERT INTO flight_search_history (
-        user_email, origin, destination, depart_date, target_price
-    ) VALUES (?, ?, ?, ?, ?);
+    INSERT INTO flight_search_history (origin, destination, depart_date, target_price
+    ) VALUES (?, ?, ?, ?);
     """
 
     cursor.execute(insert_query, (
-        user_id, flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price
+        flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price
+    ))
+
+def insert_update(cursor, flight: models.Flight):
+    insert_query = """
+    INSERT INTO flight_update_history (origin, destination, depart_date, target_price
+    ) VALUES (?, ?, ?, ?);
+    """
+
+    cursor.execute(insert_query, (
+        flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price
     ))
 
 try:
+    #_restartDataBase()
     callFuncFromOtherThread(make_the_tabel)
+    #_createRndData()
+    _printAllData()
 except Exception as e:
-    print (f"Problem with history data base: {e}")
+    logger.error(f"Error in data base: {e}")

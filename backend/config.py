@@ -2,7 +2,9 @@
 
 TOKEN_ERROR = "Error with the api token"
 
-USER_NOT_FOUND_ERROR = "No user found with IP"
+DATE_FORMAT = "%Y-%m-%d"
+
+USER_NOT_FOUND_ERROR = "No user found with email"
 CONNECTION_PROBLEM = "Problem with the connection"
 
 USER_ADDED_SUCCESSFULLY = "The user was added"

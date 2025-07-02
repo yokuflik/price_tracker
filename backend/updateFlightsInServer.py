@@ -4,6 +4,7 @@ from datetime import datetime
 import models
 import os
 from dotenv import load_dotenv
+import requests
 
 import smtplib
 from email.mime.text import MIMEText
@@ -63,6 +64,7 @@ def updateAllFlightPrices():
 def updateBestFlight(flight: models.Flight):
     #find the best flight
     flightOptions = getFlightOptions(flight)
+    print (f"i got the flight options for {flight.departure_airport} -> {flight.arrival_airport}")
     bestPrice = None
     bestOffer = None
     for offer in flightOptions: #find the best price
@@ -79,10 +81,12 @@ def updateBestFlight(flight: models.Flight):
     flight.last_checked = datetime.now().strftime("%-d/%-m/%Y %H:%M:%S")
 
     #create the best flight if never created before
-    if flight.best_found is None: flight.best_found = models.BestFlightFound(price=0, time="", airline="")
+    #if flight.best_found is None: flight.best_found = models.BestFlightFound(price=0, time="", airline="")
 
     notify = False
-    if float(flight.best_found.price) <= flight.target_price: #that means that i already found a flight in the target price
+    if flight.best_found.price is None:
+        flight.best_found.price = 0
+    elif float(flight.best_found.price) <= flight.target_price: #that means that i already found a flight in the target price
         notify = flight.notify_on_any_drop
 
     flight.last_price_found = bestPrice #saves the last best offer
@@ -113,16 +117,13 @@ def getFlightOptions(flight: models.Flight):
         flight_options = result.get("data", [])
         return flight_options
 
-    except Exception as e:
+    except requests.exceptions.HTTPError as e:
         logger.error(f"problom in getting flights {flight.departure_airport} -> {flight.arrival_airport}: {e}")
-        return []
+        raise e
 
 def _print_flight_options(flight_options):
-    """
-    מדפיסה את כל האפשרויות שקיבלנו מה־API של אמדאוס.
-    """
     if not flight_options:
-        print("לא נמצאו טיסות מתאימות.")
+        print("Didnt find any flights")
         return
 
     for offer in flight_options:
@@ -141,14 +142,14 @@ def _print_flight_options(flight_options):
             print(f"Problem in the processing: {e}")
 
 def foundBetterFlight(flight: models.Flight):
-    send_email(db.callFuncFromOtherThread(db.get_user_email_by_id, float(flight.user_id)), 
-               f"Hi \nWe found a flight in the price you wanted - {flight.best_found.time} in {flight.best_found.price}$ by {flight.best_found.airline}")
+    print("found better flight")
+    #send_email(db.callFuncFromOtherThread(db.get_user_email_by_id, float(flight.user_id)), 
+     #          f"Hi \nWe found a flight in the price you wanted - {flight.best_found.time} in {flight.best_found.price}$ by {flight.best_found.airline}")
 
 def main():
     #while True:
-    #updateAllFlightPrices()
+    updateAllFlightPrices()
         #time.sleep(3600) #it will be activated when it will work
-    pass
 
 if __name__ == "__main__":
     main()
