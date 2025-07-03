@@ -10,6 +10,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import logging
+import user_flight_history_data_base as flight_history_db
 
 #region set the logger
 load_dotenv()
@@ -138,7 +139,10 @@ def _print_flight_options(flight_options):
             print(f"Problem in the processing: {e}")
 
 def foundBetterFlight(flight: models.Flight):
+    #add to the data base
+    flight_history_db.callFuncFromOtherThread(flight_history_db.user_got_his_flight, flight)
     print("found better flight")
+    
     #send_email(db.callFuncFromOtherThread(db.get_user_email_by_id, float(flight.user_id)), 
      #          f"Hi \nWe found a flight in the price you wanted - {flight.best_found.time} in {flight.best_found.price}$ by {flight.best_found.airline}")
 

@@ -114,6 +114,18 @@ def make_the_tabel(cursor):
     );"""
     )
 
+    cursor.execute("""
+
+    CREATE TABLE IF NOT EXISTS user_got_flight_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        origin TEXT NOT NULL,
+        destination TEXT NOT NULL,
+        depart_date DATE NOT NULL,
+        found_price REAL NOT NULL
+    );"""
+    )
+
 def insert_search(cursor, flight: models.Flight):
     insert_query = """
     INSERT INTO flight_search_history (origin, destination, depart_date, target_price
@@ -132,6 +144,15 @@ def insert_update(cursor, flight: models.Flight):
 
     cursor.execute(insert_query, (
         flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price
+    ))
+
+def user_got_his_flight(cursor, flight:models.Flight):
+    insert_query = """
+    INSERT INTO user_got_flight_history (origin, destination, depart_date, found_price
+    ) VALUES (?, ?, ?, ?);
+    """
+    cursor.execute(insert_query, (
+        flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.best_found.price
     ))
 
 try:
