@@ -109,12 +109,12 @@ class queries:
 
 #region debug funcs
 
-def getAllUsersInfo(cursor, conn):
+def getAllUsersInfo(cursor, conn) -> str:
     cursor.execute("SELECT * FROM users")
     rows = cursor.fetchall()
     return "\n".join(getUserStringFromTuple(cursor,conn, row) for row in rows)
 
-def getUserStringFromTuple(cursor,conn, tpl : tuple, max_items: int = 6):
+def getUserStringFromTuple(cursor,conn, tpl : tuple, max_items: int = 6) -> str:
     if len(tpl) != 3:
         raise ValueError("Expected a user tuple with 2 elements (id, email)")
 
@@ -145,7 +145,7 @@ def _createRndUsers():
     import random
     for i in range(5):
         try_email = f"try{i+1}@gmail.com"
-        callFuncFromOtherThread(addUser, UserInfo(email=try_email, hash_password=hash_password(f"password{i}")))
+        callFuncFromOtherThread(addUser, UserInfo(email=try_email, hash_password=f"password{i}"))
         userId = callFuncFromOtherThread(get_user_id_by_email, try_email)
         airports = [
     "JFK",  # John F. Kennedy International Airport, USA

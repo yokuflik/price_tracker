@@ -5,7 +5,10 @@ from cachetools import TTLCache
 import config
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+import models
+import json
+import amadeus_history_data_base as history_db
 
 # Using TTLCache instead of a regular dictionary for practice.
 # For this scale (up to ~50,000 entries), a simple in-memory dict would be more efficient,
@@ -73,9 +76,52 @@ def _get_access_token():
     except requests.RequestException:
         return None
 
-def search_flights(origin, destination, departureDate):
+def search_flights(flight: models.Flight, filter: bool = True, flights_list = None) -> list[dict]:
+    if flights_list == None: #you can give a flight_list for mock data
+        flights_list = [] #list(list(dict))
+        if flight.more_criteria.flexible_days_before == 0 and flight.more_criteria.flexible_days_after == 0:
+            flights_list.append(search_flights_for_specific_day(flight)) #append list(dict)
+        else:
+            days = flight.more_criteria.flexible_days_before + 1 + flight.more_criteria.flexible_days_after
+            start_day = datetime.strptime(flight.requested_date, config.DATE_FORMAT) #set the date in a date format
+            start_day = start_day - timedelta(days=flight.more_criteria.flexible_days_before)
+                                              
+            original_requsted_date = flight.requested_date
+
+            for i in range(days):
+                cur_day_date = start_day + timedelta(days=i)
+                flight.requested_date = cur_day_date.strftime(config.DATE_FORMAT)
+                flights_list.append(search_flights_for_specific_day(flight)) #append list(dict)
+
+            flight.requested_date = original_requsted_date
+
+    res = []
+
+    #filter the results
+    if filter:
+        #filter connection numbers
+        if flight.more_criteria.connection != 0:
+            for curFlight in flights_list:
+                data_dict = json.loads(curFlight)
+                flight_offers_data = data_dict.get("data", [])
+                classified_flights = set_flights_by_connection_numbers(flight_offers_data) #a dict with numbers of connection {0:[flight_list], 2:[flight_list]}
+                    
+                for j in range(flight.more_criteria.connection+1):
+                    if j in classified_flights:
+                        res = res + classified_flights[j] #leaves in the list only the flights with the number of connection or less wanted
+
+        #filter max connection hours
+        res = filter_flight_connection_hours(res, flight.more_criteria.max_connection_hours)
+    
+    else:
+        for fl in flights_list: #to make it a big list from a list of lists
+            res.extend(fl)
+
+    return res
+
+def search_flights_for_specific_day(flight: models.Flight) -> list[dict]:
     #check if is in the cache
-    key = get_cache_key(origin, destination, departureDate)
+    key = get_cache_key(flight.departure_airport, flight.arrival_airport, flight.requested_date)
     if key in cache:
         return cache[key]
     
@@ -93,13 +139,16 @@ def search_flights(origin, destination, departureDate):
     headers = {
         "Authorization": f"Bearer {token}"
     }
+    
     params = {
-        "originLocationCode": origin,
-        "destinationLocationCode": destination,
-        "departureDate": departureDate,
-        "adults": 1,
-        "max": 5
+        "originLocationCode": flight.departure_airport,
+        "destinationLocationCode": flight.arrival_airport,
+        "departureDate": flight.requested_date,
+        "adults": 1, # Keeping 1 as requested by the user
+        "max": 5 #can be more in production version its like this because costs
     }
+
+    #get the flights from the amadeus api
     try:
         response = requests.get(FLIGHT_SEARCH_URL, headers=headers, params=params, timeout=20)
         response.raise_for_status()
@@ -113,12 +162,73 @@ def search_flights(origin, destination, departureDate):
             lastTokenTime = 0
 
             #call the func again
-            return search_flights(origin, destination, departureDate)
+            return search_flights(flight, filter)
         else:
             logger.error(f"Errer in searching {e}")
             raise e
             
     res = response.json()
     cache[key] = res #add the result to the cache
-    logger.info (f"Flight search at {datetime.now()} from {origin} to {destination} in {departureDate}") #add the search to the logger
+
+    #add to history db
+    history_db.insert_search(flight)
+
+    logger.info (f"Flight search at {datetime.now()} from {flight.departure_airport} to {flight.arrival_airport} in {flight.requested_date}") #add the search to the logger
     return res
+
+def set_flights_by_connection_numbers(flight_ofers: list[dict]) -> dict[int, list[dict]]:
+    # Initialize flights_by_connections as a dictionary with lists for each category
+    flights_by_connections = {}
+
+    for offer in flight_ofers:
+        if "itineraries" in offer and offer["itineraries"]:
+            itinerary = offer["itineraries"][0]
+            segments = itinerary.get("segments", [])
+
+            num_connections = len(segments) - 1 # It's a list of segments of the way
+
+            # Categorize the flight
+            if num_connections not in flights_by_connections:
+                flights_by_connections[num_connections] = []
+                
+            flights_by_connections[num_connections].append(offer)
+            
+    return flights_by_connections
+
+def filter_flight_connection_hours(flight_ofers: list[dict], max_connection_hours: float) -> list[dict]:
+    res = []
+    for offer in flight_ofers:
+        connection_times = calculate_connection_hours(offer["itineraries"][0]) # send him the segments
+        if max(connection_times) <= max_connection_hours: #a good offer
+            res.append(offer)
+
+        #if the max connection hour is bigger then the max possible it will be filtered
+    
+    return res
+
+def calculate_connection_hours(itinerary: dict) -> list[float]:
+    connection_times_hours = []
+    segments = itinerary.get("segments", [])
+
+    if len(segments) < 2:
+        return []
+
+    for i in range(len(segments) - 1):
+        current_segment_arrival_time_str = segments[i]['arrival']['at']
+        
+        next_segment_departure_time_str = segments[i+1]['departure']['at']
+
+        arrival_dt = datetime.fromisoformat(current_segment_arrival_time_str)
+        departure_dt = datetime.fromisoformat(next_segment_departure_time_str)
+
+        connection_duration = departure_dt - arrival_dt
+
+        connection_hours = connection_duration.total_seconds() / 3600
+        connection_times_hours.append(connection_hours)
+
+    return connection_times_hours
+
+#flight_offers = search_flights(models.Flight(user_id=1, departure_airport="TLV", arrival_airport="JFK", requested_date="2025-12-12", target_price=600,
+ #                                            more_criteria=models.MoreCriteria(connection=1, flexible_days_after=0)))
+
+#print (len(flight_offers))

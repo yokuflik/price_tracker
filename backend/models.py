@@ -11,7 +11,7 @@ class BestFlightFound(BaseModel):
     time: Optional[str] = None
     airline: Optional[str] = None
 
-DEPARTMENTS = ["Tourists", "Business", "First"]
+DEPARTMENTS = ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]
 class MoreCriteria(BaseModel):
     connection: int = 0
     max_connection_hours: Optional[float] = None

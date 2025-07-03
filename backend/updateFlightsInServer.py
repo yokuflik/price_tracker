@@ -108,11 +108,7 @@ def getFlightOptions(flight: models.Flight):
     returns the flight options
     """
     try:
-        result = amadeus_api.search_flights(
-            flight.departure_airport,
-            flight.arrival_airport,
-            flight.requested_date
-        )
+        result = amadeus_api.search_flights(flight)
 
         flight_options = result.get("data", [])
         return flight_options

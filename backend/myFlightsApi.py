@@ -94,6 +94,7 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 #region users
 
 #a debug func
+
 """
 @app.get("/get_all_users", summary="Get list of all registered users",
     description="Retrieves a list of all users in the system with their basic information.",
@@ -244,18 +245,17 @@ def check_if_mail_matches_user_id(email: str, user_id:int) -> bool:
 async def register_user(request: Request):
     try:
         body = await request.json()
-        #user = models.UserInfo(**body)
         email = body.get("email")
         password = body.get("password")
-        #check if the password is ok the passwird isnt hashed yet
+
+        #check if the password is ok the password isnt hashed yet
         if not check_if_password_is_good(password):
             logger.warning(f"Password not good")
             raise HTTPException(status_code=422, detail=f"Password not good")
 
         #hash the password
-        #user.hash_password = hash_password(user.hash_password)
-
         user = models.UserInfo(email=email, hash_password=hash_password(password))
+
         #check if the user already exists
         if db.callFuncFromOtherThread(db.get_user_id_by_email, user.email) != None:
             logger.warning(f"User already exists: {user.email}")
@@ -366,6 +366,7 @@ async def login(request: Request):
 def delete_user(request: Request, user_email: str = Query(...), current_user_id: int = Depends(get_current_user_id)):
     
     if not check_if_mail_matches_user_id(user_email, current_user_id): #if someone else trys to delete a user that isnt him
+        logger.warning(f"A user {user_email} tryes to delete other user {current_user_id}")
         raise HTTPException(status_code=403, detail="You are not authorized to add flights to other users.")
 
     success = db.callFuncFromOtherThread(db.delete_user, user_email)
@@ -511,6 +512,7 @@ async def add_flight(request: Request, current_user_id: int = Depends(get_curren
 
         #check if the flight id matches the token id
         if flight.user_id != current_user_id:
+            logger.warning(f"A user {flight.user_id} tryes to access other user {current_user_id} flights")
             raise HTTPException(status_code=403, detail="You are not authorized to add flights to other users.")
         
         success = db.callFuncFromOtherThread(db.addTrackedFlight, flight.user_id, flight)
@@ -580,6 +582,7 @@ async def add_flight(request: Request, current_user_id: int = Depends(get_curren
 @limiter.limit("10/minute")
 async def get_flights(request: Request, user_email: str = Query(...), current_user_id: int = Depends(get_current_user_id)):
     if not check_if_mail_matches_user_id(user_email, current_user_id):
+        logger.warning(f"A user {user_email} tryes to access other user {current_user_id} flights")
         raise HTTPException(status_code=403, detail="You are not authorized to get flights from other users.")
     try:
         return JSONResponse(status_code=200, content={"flights" : db.callFuncFromOtherThread(db.getAllUserFlights, user_email)})
@@ -650,6 +653,7 @@ async def delete_flight(request: Request, flight_id: int = Query(...), current_u
     user_id = db.callFuncFromOtherThread(db.get_user_id_by_flight_id, flight_id)
     #check if user id and token id matches
     if user_id != current_user_id:
+        logger.warning(f"A user {user_id} tryes to access other user {current_user_id} flights")
         raise HTTPException(status_code=403, detail="You are not authorized to delete flights that belongs other users.")
     
     success = db.callFuncFromOtherThread(db.deleteFlightById, int(flight_id))
@@ -721,6 +725,7 @@ async def update_flight(request: Request, current_user_id: int = Depends(get_cur
 
         #check if user id and token id matches
         if flight.user_id != current_user_id:
+            logger.warning(f"A user {flight.user_id} tryes to access other user {current_user_id} flights")
             raise HTTPException(status_code=403, detail="You are not authorized to delete flights that belongs other users.")
     
         check_flight(flight)
@@ -792,11 +797,7 @@ async def getFlightOptions(request: Request, flight: models.Flight, current_user
     returns the flight options and None if a problem occurd
     """
     try:
-        result = amadeus_api.search_flights(
-            flight.departure_airport,
-            flight.arrival_airport,
-            flight.requested_date
-        )
+        result = amadeus_api.search_flights(flight)
 
         flight_options = result.get("data", [])
         return flight_options
