@@ -50,13 +50,26 @@ TOKEN_URL = "https://test.api.amadeus.com/v1/security/oauth2/token"
 FLIGHT_SEARCH_URL = "https://test.api.amadeus.com/v2/shopping/flight-offers"
 
 def check_health() -> bool:
-    #In a production virsion I will realy check but I dont want to waste the tokens
-    return True
+    """
+    checks if the amadeus api is working good
+    """
+    try:
+        token = _get_access_token()
+
+        #save the token to the cache
+        token_cache["token"] = token
+
+        return True
+    except:
+        return False
 
 token_cache = TTLCache(maxsize=1, ttl=3600)
 
 lastTokenTime = 0
 def _get_access_token():
+    """
+    gets the token to access the amadeus api
+    """
     try:
         data = {
             "grant_type": "client_credentials",
@@ -77,17 +90,24 @@ def _get_access_token():
         return None
 
 def search_flights(flight: models.Flight, filter: bool = True, flights_list = None) -> list[dict]:
+    """
+    search the flight options from the amadeus api for the number fo days the user wants to get flight offers from 
+    and filter them if filter = True by max connection number and max connection hours
+    """
+
     if flights_list == None: #you can give a flight_list for mock data
         flights_list = [] #list(list(dict))
         if flight.more_criteria.flexible_days_before == 0 and flight.more_criteria.flexible_days_after == 0:
             flights_list.append(search_flights_for_specific_day(flight)) #append list(dict)
         else:
+            #calculate the days number and the start day date
             days = flight.more_criteria.flexible_days_before + 1 + flight.more_criteria.flexible_days_after
             start_day = datetime.strptime(flight.requested_date, config.DATE_FORMAT) #set the date in a date format
             start_day = start_day - timedelta(days=flight.more_criteria.flexible_days_before)
                                               
             original_requsted_date = flight.requested_date
 
+            #get the flight offers for every day in the dates the user wants to
             for i in range(days):
                 cur_day_date = start_day + timedelta(days=i)
                 flight.requested_date = cur_day_date.strftime(config.DATE_FORMAT)
@@ -99,28 +119,40 @@ def search_flights(flight: models.Flight, filter: bool = True, flights_list = No
 
     #filter the results
     if filter:
-        #filter connection numbers
-        if flight.more_criteria.connection != 0:
-            for curFlight in flights_list:
-                data_dict = json.loads(curFlight)
-                flight_offers_data = data_dict.get("data", [])
-                classified_flights = set_flights_by_connection_numbers(flight_offers_data) #a dict with numbers of connection {0:[flight_list], 2:[flight_list]}
-                    
-                for j in range(flight.more_criteria.connection+1):
-                    if j in classified_flights:
-                        res = res + classified_flights[j] #leaves in the list only the flights with the number of connection or less wanted
-
-        #filter max connection hours
-        res = filter_flight_connection_hours(res, flight.more_criteria.max_connection_hours)
-    
+        res = filter_flights(flight, flights_list)
     else:
         for fl in flights_list: #to make it a big list from a list of lists
             res.extend(fl)
 
     return res
 
+def filter_flights(flight : models.Flight, flights_list: list[list[dict]]) -> list[list[dict]]:
+    """
+    the function filter the list of flight offers by connection times and max connection hours
+    """
+    #filter connection numbers
+    if flight.more_criteria.connection != 0:
+        for curFlight in flights_list:
+            data_dict = json.loads(curFlight)
+            flight_offers_data = data_dict.get("data", [])
+            classified_flights = set_flights_by_connection_numbers(flight_offers_data) #a dict with numbers of connection {0:[flight_list], 2:[flight_list]}
+                
+            for j in range(flight.more_criteria.connection+1):
+                if j in classified_flights:
+                    res = res + classified_flights[j] #leaves in the list only the flights with the number of connection or less wanted
+
+        #filter max connection hours
+        res = filter_flight_connection_hours(res, flight.more_criteria.max_connection_hours)
+
+        return res
+    else:
+        return flights_list
+
 def search_flights_for_specific_day(flight: models.Flight) -> list[dict]:
-    #check if is in the cache
+    """
+    get all the flight options for a specific date from amadeus api
+    """
+    #check if the flight search is in the cache
     key = get_cache_key(flight.departure_airport, flight.arrival_airport, flight.requested_date)
     if key in cache:
         return cache[key]
@@ -134,7 +166,7 @@ def search_flights_for_specific_day(flight: models.Flight) -> list[dict]:
         try_last_token = False
         token_cache["token"] = token
 
-    if token == None: return config.TOKEN_ERROR
+    if token == None: return [{"error" : config.TOKEN_ERROR}]
     
     headers = {
         "Authorization": f"Bearer {token}"
@@ -177,6 +209,10 @@ def search_flights_for_specific_day(flight: models.Flight) -> list[dict]:
     return res
 
 def set_flights_by_connection_numbers(flight_ofers: list[dict]) -> dict[int, list[dict]]:
+    """
+    set the flights in a dict that the keys are the connection number - {1:[ { flight1 }, { flight2 }], 2: [ { flight3 }, { flight4 } ]}
+    """
+    
     # Initialize flights_by_connections as a dictionary with lists for each category
     flights_by_connections = {}
 
@@ -207,6 +243,10 @@ def filter_flight_connection_hours(flight_ofers: list[dict], max_connection_hour
     return res
 
 def calculate_connection_hours(itinerary: dict) -> list[float]:
+    """
+    calculate how much hours is between the connections
+    """
+    
     connection_times_hours = []
     segments = itinerary.get("segments", [])
 

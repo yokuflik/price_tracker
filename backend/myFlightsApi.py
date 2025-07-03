@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, status, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import dataBaseFile as db
 import config
 import models
@@ -21,7 +22,7 @@ import re
 import jwt
 from datetime import datetime, timedelta, timezone
 
-#region loggs file
+#region loggor
 
 load_dotenv()
 
@@ -46,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 #endregion
 
-#load all the airports
+#load all the airports names to a list
 def getAirportsDict():
     file = os.getenv("AIRPORTS_DICT_FILE")
     with open(file) as f:
@@ -54,6 +55,7 @@ def getAirportsDict():
 
 airports = getAirportsDict()
 
+#this is the api object
 app = FastAPI()
 
 #its here so i can call from the web brwosher
@@ -74,10 +76,13 @@ limiter = Limiter(key_func=get_remote_address)
              200: {"description": "Service is healthy"},
              503: {"description": "Service unavailable"}})
 async def health_check():
+    """
+    checks if the api is working it will check the data base and the amadeus api
+    """
     try:
         db.callFuncFromOtherThread() #it will open the data base and close it 
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error(f"Health check failed on data base: {e}")
         raise HTTPException(status_code=503, detail=f"API Unavailable: {e}")
     
     if amadeus_api.check_health(): #check the amadeus
@@ -86,10 +91,22 @@ async def health_check():
         logger.error(f"Health check failed: on amadeus api")
         raise HTTPException(status_code=503, detail=f"Amadeus API service Unavailable")
 
-# gives the user an error
+# gives the user an error if he used the api more then is limit
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(status_code=429, content={"detail": "Too many requests, please slow down."})
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """
+    catch all the http errors
+    """
+    logger.error(f"HTTPException: {exc.status_code} - {exc.detail} for path: {request.url.path}")
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
 
 #region users
 
@@ -389,11 +406,14 @@ def check_date_format_and_past(date_str: str, fmt=config.DATE_FORMAT):
     except ValueError:
         return False, None
     
-    # הפורמט תקין, בודקים אם התאריך עבר
     is_past = date < datetime.now().date()
     return True, is_past
 
 def check_flight(flight: models.Flight):
+    """
+    checks if the given flight has no bad values
+    """
+    
     if flight.departure_airport == flight.arrival_airport:
         raise ValueError("The departure airport and the arrival airport can't be the same")
 

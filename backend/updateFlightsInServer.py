@@ -12,7 +12,7 @@ from email.mime.multipart import MIMEMultipart
 import logging
 import user_flight_history_data_base as flight_history_db
 
-#region set the logger
+#region logger
 load_dotenv()
 
 LOG_FILE_PATH = os.getenv("UPDATE_IN_SERVER_LOG_FILE_PATH", "update_in_server.log")
@@ -35,6 +35,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 #endregion
+
+#region email
 
 EMAIL_ADDRESS = os.getenv("API_EMAIL")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
@@ -59,16 +61,23 @@ def send_email(recipient_email: str, subject: str, body: str) -> bool:
         logger.error(f"Error in sending email to {recipient_email}")
         return False
 
+#endregion
+
 def updateAllFlightPrices():
     db.callFuncFromOtherThread(db.update_all_flight_details, updateBestFlight)
 
-def updateBestFlight(flight: models.Flight):
+def updateBestFlight(flight: models.Flight) -> models.Flight:
+    """
+    the function that updates the flight last price found and best price found if founded and also notifys the user if found the flight he wanted
+    """
+
     #find the best flight
     flightOptions = getFlightOptions(flight)
-    print (f"i got the flight options for {flight.departure_airport} -> {flight.arrival_airport}")
     bestPrice = None
     bestOffer = None
+
     for offer in flightOptions: #find the best price
+        offer = offer.get("data", [])
         curPrice = float(offer["price"]["total"])
         if bestPrice: 
             if curPrice < bestPrice:
@@ -81,11 +90,8 @@ def updateBestFlight(flight: models.Flight):
     #update the last time update and best last price
     flight.last_checked = datetime.now().strftime("%-d/%-m/%Y %H:%M:%S")
 
-    #create the best flight if never created before
-    #if flight.best_found is None: flight.best_found = models.BestFlightFound(price=0, time="", airline="")
-
     notify = False
-    if flight.best_found.price is None:
+    if flight.best_found.price is None: #the first time
         flight.best_found.price = 0
     elif float(flight.best_found.price) <= flight.target_price: #that means that i already found a flight in the target price
         notify = flight.notify_on_any_drop
@@ -102,17 +108,18 @@ def updateBestFlight(flight: models.Flight):
         #only if its the first time I found it to not disturb every time
         if bestPrice <= flight.target_price or notify:
             foundBetterFlight(flight)
+
     return flight
     
-def getFlightOptions(flight: models.Flight):
+def getFlightOptions(flight: models.Flight) -> list[dict]:
     """
-    returns the flight options
+    returns the flight options can raise an http error back
     """
     try:
         result = amadeus_api.search_flights(flight)
 
-        flight_options = result.get("data", [])
-        return flight_options
+        #flight_options = result.get("data", [])
+        return result
 
     except requests.exceptions.HTTPError as e:
         logger.error(f"problom in getting flights {flight.departure_airport} -> {flight.arrival_airport}: {e}")
@@ -139,16 +146,21 @@ def _print_flight_options(flight_options):
             print(f"Problem in the processing: {e}")
 
 def foundBetterFlight(flight: models.Flight):
+    """
+    add the flight that was founded to the correct data base and then notify the user in the production it will be by email
+    """
     #add to the data base
     flight_history_db.callFuncFromOtherThread(flight_history_db.user_got_his_flight, flight)
     print("found better flight")
-    
+
     #send_email(db.callFuncFromOtherThread(db.get_user_email_by_id, float(flight.user_id)), 
      #          f"Hi \nWe found a flight in the price you wanted - {flight.best_found.time} in {flight.best_found.price}$ by {flight.best_found.airline}")
 
 def main():
+    print (type(getFlightOptions(models.Flight(user_id=2, departure_airport="TLV", arrival_airport="JFK", 
+                                               requested_date="2025-12-12", target_price=400))))
     #while True:
-    updateAllFlightPrices()
+    #updateAllFlightPrices()
         #time.sleep(3600) #it will be activated when it will work
 
 if __name__ == "__main__":

@@ -80,6 +80,10 @@ class queries:
         """
 
     def _applyQueryOnFlightValues(cursor, query: str, flight: Flight, on_start_additional_values:tuple = (), on_end_additional_values:tuple = ()):
+        """
+        gets a query and applys it on all the flight variabels
+        """
+        
         values = on_start_additional_values + (
             flight.departure_airport,
             flight.arrival_airport,
@@ -110,11 +114,18 @@ class queries:
 #region debug funcs
 
 def getAllUsersInfo(cursor, conn) -> str:
+    """
+    gives all the users and all the flights its a debug func
+    """
     cursor.execute("SELECT * FROM users")
     rows = cursor.fetchall()
     return "\n".join(getUserStringFromTuple(cursor,conn, row) for row in rows)
 
 def getUserStringFromTuple(cursor,conn, tpl : tuple, max_items: int = 6) -> str:
+    """
+    a debug func that gives a string with the user data and all the user flights
+    """
+    
     if len(tpl) != 3:
         raise ValueError("Expected a user tuple with 2 elements (id, email)")
 
@@ -142,6 +153,9 @@ def getUserStringFromTuple(cursor,conn, tpl : tuple, max_items: int = 6) -> str:
     return result.strip()
 
 def _createRndUsers():
+    """
+    a debug func that creates 5 random users and a flight to every user to test the data base
+    """
     import random
     for i in range(5):
         try_email = f"try{i+1}@gmail.com"
@@ -181,7 +195,7 @@ def get_user_hashed_password_by_email(cursor, conn, email: str) -> str:
 
 def delete_user(cursor, conn, email: str) -> bool:
     cursor.execute("DELETE FROM users WHERE email = ?", (email,))
-    if cursor.rowcount < 0: raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {email}")
+    if cursor.rowcount < 0: raise HTTPException(status_code=404, detail=f"{config.USER_NOT_FOUND_ERROR}: {email}")
     conn.commit()
     return True
 
@@ -202,7 +216,7 @@ def get_user_id_by_email(cursor, conn, email: str) -> int:
 def get_user_email_by_id(cursor, conn, user_id: int) -> str:
     cursor.execute("SELECT email FROM users where id = ?", (user_id, ))
     res = cursor.fetchone()
-    if res is None: raise ValueError(f"{config.USER_NOT_FOUND_ERROR} {user_id}")
+    if res is None: raise HTTPException(status_code=404, detail=f"{config.USER_NOT_FOUND_ERROR}: {user_id}")
     return res[0]
 
 def get_user_id_by_flight_id(cursor, conn, flight_id: int) -> int:
@@ -229,7 +243,7 @@ def addTrackedFlight(cursor, conn,user_id:int, flight: Flight) -> bool:
     return cursor.rowcount > 0
 
 def updateTrackedFlightDetail(cursor, conn, flight_id: int, flight: Flight) -> bool:
-    if flight_id != flight.flight_id: raise ValueError (f"You cannot update a flight with a differnt flight id flight_id given: {flight_id}, flight.flight_id{flight.flight_id}")
+    if flight_id != flight.flight_id: raise HTTPException (status_code=403, detail=f"Forbidden: You cannot update a flight with a differnt flight id flight_id given: {flight_id}, flight.flight_id{flight.flight_id}")
     
     queries._applyQueryOnFlightValues(cursor, queries.update_tracked_flight_query, flight, on_end_additional_values=(flight_id,))
 
@@ -275,6 +289,10 @@ def update_all_flight_details(cursor, conn, update_func) -> None:
             print(f"Failed updating the flight {row[2]} -> {row[3]} in {row[4]}: {e}")
 
 def getAllUserFlights(cursor,conn, email) -> list[dict]:
+    """
+    gets a user email and returns a list with all his tracked flights as a list of dicts
+    """
+
     cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
     result = cursor.fetchone()
     if result is None:
@@ -286,9 +304,9 @@ def getAllUserFlights(cursor,conn, email) -> list[dict]:
         WHERE user_id = ?
     """, (user_id,))
     
-    flight_tuples = cursor.fetchall()
+    flight_tuples = cursor.fetchall() #read from data base
     res = []
-    columns = ["flight_id", "user_id"] + queries.ALL_FLIGHT_COLUMNS
+    columns = ["flight_id", "user_id"] + queries.ALL_FLIGHT_COLUMNS #addes the 2 id values to get all the values in the SQLite tabel
     for flight_tuple in flight_tuples:
         flight_dict = dict(zip(columns, flight_tuple))
         res.append(flight_dict)
