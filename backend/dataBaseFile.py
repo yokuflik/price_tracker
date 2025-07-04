@@ -2,10 +2,10 @@ import sqlite3
 from datetime import datetime
 import os
 import config
-from models import Flight, UserInfo
+from models import Flight
 import models
 from dotenv import load_dotenv
-from data_bases_code import user_flight_history_data_base as flight_history_db
+import user_flight_history_data_base as flight_history_db
 import bcrypt
 from fastapi import HTTPException
 
@@ -367,5 +367,6 @@ def callFuncFromOtherThread(func=None, *args, **kwargs):
 #endregion
 
 if __name__ == "__main__":
-    _mainFromFile()
+    #_mainFromFile()
+    pass
     #_restartDataBase()

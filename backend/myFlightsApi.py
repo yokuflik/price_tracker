@@ -20,7 +20,7 @@ import jwt
 
 import amadeus_api
 import config
-from data_bases_code import dataBaseFile as db
+import dataBaseFile as db
 import models
 
 #region loggor

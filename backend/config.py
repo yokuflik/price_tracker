@@ -1,4 +1,15 @@
 #this is the flie with all the global variabels
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Settings:
+    DATABASE_URL: str = os.getenv("DATABASE_URL")
+    AMADEUS_API_KEY: str = os.getenv("AMADEUS_API_KEY")
+    AMADEUS_API_SECRET: str = os.getenv("AMADEUS_API_SECRET")
+
+settings = Settings()
 
 TOKEN_ERROR = "Error with the api token"
 

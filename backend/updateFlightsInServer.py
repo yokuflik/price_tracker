@@ -1,4 +1,4 @@
-from data_bases_code import dataBaseFile as db
+import dataBaseFile as db
 import amadeus_api
 from datetime import datetime
 import models
@@ -10,7 +10,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import logging
-from data_bases_code import user_flight_history_data_base as flight_history_db
+import user_flight_history_data_base as flight_history_db
 
 #region logger
 load_dotenv()

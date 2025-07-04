@@ -2,14 +2,22 @@ from pydantic import BaseModel, EmailStr, confloat, Field
 from typing import Optional
 from datetime import date, datetime
 
-class UserInfo(BaseModel):
+class UserCreate(BaseModel):
     email: EmailStr
-    hash_password: str
+    hashed_password: str
+
+class UserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    hashed_password: str
 
 class BestFlightFound(BaseModel):
     price: Optional[confloat(gt=0)] = None
     time: Optional[str] = None
     airline: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 DEPARTMENTS = ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]
 class MoreCriteria(BaseModel):

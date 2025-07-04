@@ -4,7 +4,7 @@ from datetime import datetime
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend")))
 
 import models
-from data_bases_code import dataBaseFile as db
+import dataBaseFile as db
 import myFlightsApi as api
 import config
 
