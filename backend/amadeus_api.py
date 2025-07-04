@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timedelta
 import models
 import json
-import amadeus_history_data_base as history_db
+from data_bases_code import amadeus_history_data_base as history_db
 
 # Using TTLCache instead of a regular dictionary for practice.
 # For this scale (up to ~50,000 entries), a simple in-memory dict would be more efficient,

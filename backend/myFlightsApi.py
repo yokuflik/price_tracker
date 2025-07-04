@@ -1,26 +1,27 @@
-from fastapi import FastAPI, Request, HTTPException, status, Query, Depends
+import bcrypt
+import json
+import logging
+import os
+import re
+from datetime import datetime, timedelta, timezone
+from typing import Literal
+
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from starlette.exceptions import HTTPException as StarletteHTTPException
-import dataBaseFile as db
-import config
-import models
-import logging
-import os
-from dotenv import load_dotenv
 from pydantic import ValidationError
-import json
-from datetime import datetime
-import amadeus_api
-import bcrypt
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from typing import Literal
-import re
+from slowapi.util import get_remote_address
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import jwt
-from datetime import datetime, timedelta, timezone
+
+import amadeus_api
+import config
+from data_bases_code import dataBaseFile as db
+import models
 
 #region loggor
 
@@ -670,7 +671,8 @@ async def get_flights(request: Request, user_email: str = Query(...), current_us
 @limiter.limit("30/minute")  # 30 requests in a minute for every ip
 async def delete_flight(request: Request, flight_id: int = Query(...), current_user_id: int = Depends(get_current_user_id)):
     
-    user_id = db.callFuncFromOtherThread(db.get_user_id_by_flight_id, flight_id)
+    user_id = db.callFuncFromOtherThread(db.get_user_id_by_flight_id, flight_id) #will raise http error if not exists
+
     #check if user id and token id matches
     if user_id != current_user_id:
         logger.warning(f"A user {user_id} tryes to access other user {current_user_id} flights")
@@ -758,7 +760,7 @@ async def update_flight(request: Request, current_user_id: int = Depends(get_cur
             raise HTTPException(status_code=500, detail=config.FLIGHT_UPDATE_FAILED)
         
     except HTTPException as e:
-        # let the error i ade to keep going
+        # let the error i made to keep going
         raise e
     
     except ValueError as e:

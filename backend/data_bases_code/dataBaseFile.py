@@ -5,7 +5,7 @@ import config
 from models import Flight, UserInfo
 import models
 from dotenv import load_dotenv
-import user_flight_history_data_base as flight_history_db
+from data_bases_code import user_flight_history_data_base as flight_history_db
 import bcrypt
 from fastapi import HTTPException
 
@@ -119,6 +119,7 @@ def getAllUsersInfo(cursor, conn) -> str:
     """
     cursor.execute("SELECT * FROM users")
     rows = cursor.fetchall()
+    print (len(rows[0]))
     return "\n".join(getUserStringFromTuple(cursor,conn, row) for row in rows)
 
 def getUserStringFromTuple(cursor,conn, tpl : tuple, max_items: int = 6) -> str:
@@ -127,7 +128,7 @@ def getUserStringFromTuple(cursor,conn, tpl : tuple, max_items: int = 6) -> str:
     """
     
     if len(tpl) != 3:
-        raise ValueError("Expected a user tuple with 2 elements (id, email)")
+        raise ValueError("Expected a user tuple with 3 elements (id, email, hash_password)")
 
     user_id, email, hash_password = tpl
 
@@ -222,7 +223,7 @@ def get_user_email_by_id(cursor, conn, user_id: int) -> str:
 def get_user_id_by_flight_id(cursor, conn, flight_id: int) -> int:
     cursor.execute("SELECT user_id FROM tracked_flights where flight_id = ?", (flight_id, ))
     res = cursor.fetchone()
-    if res is None: raise ValueError(f"Flight {flight_id} not found")
+    if res is None: raise HTTPException(status_code=404, detail=f"Flight: {flight_id} not found")
     return res[0]
 
 #endregion
@@ -342,7 +343,7 @@ def _makeTheTabels(cursor, conn):
 def _mainFromFile():
     #_restartDataBase()
     callFuncFromOtherThread(_makeTheTabels)
-    #_createRndUsers()
+    _createRndUsers()
     #print(callFuncFromOtherThread(getAllUserFlights, "try5@gmail.com"))
     #print(callFuncFromOtherThread(updateTrackedFlightDetail, 5, Flight(flight_id=5, user_id=5, departure_airport="BKK", 
      #                                                                  arrival_airport="TLV", requested_date="2025-07-03", target_price=1200)))
