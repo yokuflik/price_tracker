@@ -1,3 +1,4 @@
+---
 # Flight Tracking API
 
 ## Project Overview
@@ -42,6 +43,30 @@ This project provides an advanced system for tracking flight prices, receiving u
 6.  The results are cached for future requests and stored in the database, linked to the user.
 7.  Users can update or delete their tracked flights.
 8.  The system can periodically run background tasks (such as the `updateFlightsInServer.py` script) to update flight prices and send notifications to users in case of a price drop.
+
+## How to Run the Project
+
+To get this project up and running, follow these steps:
+
+1.  **Environment Setup (`.env` file):**
+    * Create a file named `.env` in the root directory where you plan to run the project.
+    * Populate this `.env` file with all the fields provided in the `example.env` file.
+    * You'll need to add your **email and password** to this file.
+    * Crucially, you must obtain an **Amadeus API Key and Secret** to get real-time flight data. These credentials should also be added to your `.env` file.
+
+2.  **Running the Backend API:**
+    * Currently, the primary way to run the project is by launching the API server locally. This allows you to perform tests and interact with the backend functionality.
+    * The API is set up to run using the `Dockerfile` provided in the repository. Build and run the Docker image to start the server.
+
+3.  **Accessing Swagger API Documentation:**
+    * Once the API server is running (by default, it's configured to run on **port 8000**), you can access the automatic Swagger UI documentation.
+    * Open your web browser and navigate to: `http://127.0.0.1:8000/docs`
+    * This interactive documentation allows you to explore the API's endpoints, test requests, and understand the data models.
+
+**Future Enhancements:**
+In the future, the plan is to integrate the frontend and backend within the same Docker container, enabling a full-stack deployment.
+
+---
 
 ## Contact
 
