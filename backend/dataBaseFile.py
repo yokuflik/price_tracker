@@ -2,8 +2,8 @@ import sqlite3
 from datetime import datetime
 import os
 import config
-from models import Flight
-import models
+from backend.schemas import Flight
+import backend.schemas as schemas
 from dotenv import load_dotenv
 import user_flight_history_data_base as flight_history_db
 import bcrypt
@@ -177,7 +177,7 @@ def _createRndUsers():
         callFuncFromOtherThread(addTrackedFlight, userId, Flight(user_id=userId, 
                                 departure_airport=airports[random.randint(0,9)], arrival_airport=airports[random.randint(0,9)], 
                                 requested_date="2025-07-07", target_price=random.randint(6,12)*50, 
-                                more_criteria = models.MoreCriteria(), best_found = models.BestFlightFound()))
+                                more_criteria = schemas.MoreCriteria(), best_found = schemas.BestFlightFound()))
 
 #endregion
 

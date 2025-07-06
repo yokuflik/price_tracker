@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer,Float, String, Boolean, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer,Float, String, Boolean, DateTime, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from connect_to_data_base import Base
@@ -6,9 +6,9 @@ from connect_to_data_base import Base
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True) # מפתח ראשי, אינדקס
-    email = Column(String, unique=True, index=True, nullable=False) # אימייל (חובה, יחיד)
-    hashed_password = Column(String, nullable=False) # סיסמה מגובבת (חובה)
+    id = Column(Integer, primary_key=True, index=True) 
+    email = Column(String, unique=True, index=True, nullable=False) 
+    hashed_password = Column(String, nullable=False) 
 
     def __repr__(self):
         return f"<User(id={self.id}, email='{self.email}', hash_password={self.hashed_password})>"
@@ -18,36 +18,32 @@ class User(Base):
 class Flight(Base):
     __tablename__ = "flights"
 
-    # מפתח ראשי
-    id = Column(Integer, primary_key=True, index=True)
+    flight_id = Column(Integer, primary_key=True, index=True)
 
-    # מפתח זר למשתמש שיצר את הטיסה למעקב
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
     owner = relationship("User", back_populates="flights_to_track")
 
-    # שדות טיסה בסיסיים
     departure_airport = Column(String, nullable=False)
     arrival_airport = Column(String, nullable=False)
-    requested_date = Column(DateTime, nullable=False) # עדיף לשמור תאריכים כ-DateTime
+    requested_date = Column(DateTime, nullable=False)
     target_price = Column(Float, nullable=False)
 
-    # שדות למעקב ומחיר אחרון
-    last_checked = Column(DateTime, nullable=True) # זמן הבדיקה האחרונה
-    last_price_found = Column(Float, nullable=True) # המחיר האחרון שנמצא
+    last_checked = Column(DateTime, nullable=True)
+    last_price_found = Column(Float, nullable=True)
     notify_on_any_drop = Column(Boolean, default=False, nullable=False)
 
-    # שדות מקוננים (MoreCriteria, BestFlightFound) - נשמור כ-JSONB
-    # נשמור אותם כ-JSONB מכיוון שהם אובייקטים מקוננים.
-    # זה מאפשר גמישות רבה יותר במבנה שלהם בעתיד.
-    more_criteria = Column(JSON, nullable=False, default={}) # יכיל את הנתונים מ-MoreCriteria
-    best_found = Column(JSON, nullable=False, default={}) # יכיל את הנתונים מ-BestFlightFound
+    more_criteria = Column(JSON, nullable=False, default={})
+    best_found = Column(JSON, nullable=False, default={}) 
 
-    # יחסים למודלים אחרים (אם יש)
-    # לדוגמה, קשר היסטוריית מעקב
-    user_flight_history = relationship("UserFlightHistory", back_populates="flight")
+    UniqueConstraint('user_id', 'departure_airport', 'arrival_airport', 'requested_date','target_price', 'more_criteria')
 
     def __repr__(self):
-        return (f"<Flight(id={self.id}, user_id={self.user_id}, "
-                f"departure='{self.departure_airport}', arrival='{self.arrival_airport}', "
-                f"target_price={self.target_price}, last_price={self.last_price_found})>")
-
+        return (f"<Flight(flight_id={self.flight_id}, "
+                f"user_id={self.user_id}, "
+                f"departure='{self.departure_airport}', "
+                f"arrival='{self.arrival_airport}', "
+                f"requested_date={self.requested_date.strftime('%Y-%m-%d') if self.requested_date else 'N/A'}, "
+                f"target_price={self.target_price}, "
+                f"last_price_found={self.last_price_found})"
+                f"more criteria={self.more_criteria}"
+                f"best found={self.best_found}>")

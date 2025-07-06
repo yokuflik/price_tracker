@@ -1,7 +1,7 @@
 import dataBaseFile as db
 import amadeus_api
 from datetime import datetime
-import models
+import backend.schemas as schemas
 import os
 from dotenv import load_dotenv
 import requests
@@ -66,7 +66,7 @@ def send_email(recipient_email: str, subject: str, body: str) -> bool:
 def updateAllFlightPrices():
     db.callFuncFromOtherThread(db.update_all_flight_details, updateBestFlight)
 
-def updateBestFlight(flight: models.Flight) -> models.Flight:
+def updateBestFlight(flight: schemas.Flight) -> schemas.Flight:
     """
     the function that updates the flight last price found and best price found if founded and also notifys the user if found the flight he wanted
     """
@@ -111,7 +111,7 @@ def updateBestFlight(flight: models.Flight) -> models.Flight:
 
     return flight
     
-def getFlightOptions(flight: models.Flight) -> list[dict]:
+def getFlightOptions(flight: schemas.Flight) -> list[dict]:
     """
     returns the flight options can raise an http error back
     """
@@ -145,7 +145,7 @@ def _print_flight_options(flight_options):
         except Exception as e:
             print(f"Problem in the processing: {e}")
 
-def foundBetterFlight(flight: models.Flight):
+def foundBetterFlight(flight: schemas.Flight):
     """
     add the flight that was founded to the correct data base and then notify the user in the production it will be by email
     """
@@ -157,7 +157,7 @@ def foundBetterFlight(flight: models.Flight):
      #          f"Hi \nWe found a flight in the price you wanted - {flight.best_found.time} in {flight.best_found.price}$ by {flight.best_found.airline}")
 
 def main():
-    print (type(getFlightOptions(models.Flight(user_id=2, departure_airport="TLV", arrival_airport="JFK", 
+    print (type(getFlightOptions(schemas.Flight(user_id=2, departure_airport="TLV", arrival_airport="JFK", 
                                                requested_date="2025-12-12", target_price=400))))
     #while True:
     #updateAllFlightPrices()

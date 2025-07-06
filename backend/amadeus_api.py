@@ -6,9 +6,9 @@ import config
 import logging
 import time
 from datetime import datetime, timedelta
-import models
+import backend.schemas as schemas
 import json
-from data_bases_code import amadeus_history_data_base as history_db
+import amadeus_history_data_base as history_db
 
 # Using TTLCache instead of a regular dictionary for practice.
 # For this scale (up to ~50,000 entries), a simple in-memory dict would be more efficient,
@@ -89,7 +89,7 @@ def _get_access_token():
     except requests.RequestException:
         return None
 
-def search_flights(flight: models.Flight, filter: bool = True, flights_list = None) -> list[dict]:
+def search_flights(flight: schemas.Flight, filter: bool = True, flights_list = None) -> list[dict]:
     """
     search the flight options from the amadeus api for the number fo days the user wants to get flight offers from 
     and filter them if filter = True by max connection number and max connection hours
@@ -126,7 +126,7 @@ def search_flights(flight: models.Flight, filter: bool = True, flights_list = No
 
     return res
 
-def filter_flights(flight : models.Flight, flights_list: list[list[dict]]) -> list[list[dict]]:
+def filter_flights(flight : schemas.Flight, flights_list: list[list[dict]]) -> list[list[dict]]:
     """
     the function filter the list of flight offers by connection times and max connection hours
     """
@@ -148,7 +148,7 @@ def filter_flights(flight : models.Flight, flights_list: list[list[dict]]) -> li
     else:
         return flights_list
 
-def search_flights_for_specific_day(flight: models.Flight) -> list[dict]:
+def search_flights_for_specific_day(flight: schemas.Flight) -> list[dict]:
     """
     get all the flight options for a specific date from amadeus api
     """

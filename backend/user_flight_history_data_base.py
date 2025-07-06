@@ -1,7 +1,7 @@
 import sqlite3
 import os
 from dotenv import load_dotenv
-import models
+import backend.schemas as schemas
 import pandas as pd
 import logging
 
@@ -54,7 +54,7 @@ def _createRndUsers():
     for i in range(5):
         try_email = f"try{i+1}@gmail.com"
         
-        res.append((try_email, models.Flight(user_id=0,
+        res.append((try_email, schemas.Flight(user_id=0,
                                 departure_airport=airports[random.randint(0,9)], arrival_airport=airports[random.randint(0,9)], 
                                 requested_date="2025-07-01", target_price=float(random.randint(6,12)*50))))
         
@@ -126,7 +126,7 @@ def make_the_tabel(cursor):
     );"""
     )
 
-def insert_search(cursor, flight: models.Flight):
+def insert_search(cursor, flight: schemas.Flight):
     insert_query = """
     INSERT INTO flight_search_history (origin, destination, depart_date, target_price
     ) VALUES (?, ?, ?, ?);
@@ -136,7 +136,7 @@ def insert_search(cursor, flight: models.Flight):
         flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price
     ))
 
-def insert_update(cursor, flight: models.Flight):
+def insert_update(cursor, flight: schemas.Flight):
     insert_query = """
     INSERT INTO flight_update_history (origin, destination, depart_date, target_price
     ) VALUES (?, ?, ?, ?);
@@ -146,7 +146,7 @@ def insert_update(cursor, flight: models.Flight):
         flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price
     ))
 
-def user_got_his_flight(cursor, flight:models.Flight):
+def user_got_his_flight(cursor, flight:schemas.Flight):
     insert_query = """
     INSERT INTO user_got_flight_history (origin, destination, depart_date, found_price
     ) VALUES (?, ?, ?, ?);

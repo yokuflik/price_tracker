@@ -2,7 +2,7 @@ import os
 import sqlite3
 import pandas as pd
 from dotenv import load_dotenv
-import models
+import backend.schemas as schemas
 load_dotenv()
 
 AMADEUS_HISTORY_DATA_BASE_FILE = os.getenv("AMADEUS_HISTORY_DATA_BASE_FILE", "amadeus_history.db")
@@ -43,11 +43,11 @@ def callFuncFromOtherThread(func, *args, **kwargs):
 #set the tabel in the run of the file
 callFuncFromOtherThread(make_the_tabel)
 
-def insert_search(flight: models.Flight):
+def insert_search(flight: schemas.Flight):
     callFuncFromOtherThread(_insert_search, flight)
 
     
-def _insert_search(cursor, flight: models.Flight):
+def _insert_search(cursor, flight: schemas.Flight):
     insert_query = """
     INSERT INTO flight_search_history (origin, destination, depart_date, target_price
     ) VALUES (?, ?, ?, ?);

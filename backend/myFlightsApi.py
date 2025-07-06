@@ -20,8 +20,9 @@ import jwt
 
 import amadeus_api
 import config
-import dataBaseFile as db
-import models
+import schemas
+import CRUD_users_and_flights_data_base as control_db
+import connect_to_data_base as connect_to_db
 
 #region loggor
 
@@ -272,7 +273,7 @@ async def register_user(request: Request):
             raise HTTPException(status_code=422, detail=f"Password not good")
 
         #hash the password
-        user = models.UserInfo(email=email, hash_password=hash_password(password))
+        user = schemas.UserInfo(email=email, hash_password=hash_password(password))
 
         #check if the user already exists
         if db.callFuncFromOtherThread(db.get_user_id_by_email, user.email) != None:
@@ -410,7 +411,7 @@ def check_date_format_and_past(date_str: str, fmt=config.DATE_FORMAT):
     is_past = date < datetime.now().date()
     return True, is_past
 
-def check_flight(flight: models.Flight):
+def check_flight(flight: schemas.Flight):
     """
     checks if the given flight has no bad values
     """
@@ -528,7 +529,7 @@ async def add_flight(request: Request, current_user_id: int = Depends(get_curren
     try:
         body = await request.json()
 
-        flight = models.Flight(**body)
+        flight = schemas.Flight(**body)
         check_flight(flight)
 
         #check if the flight id matches the token id
@@ -743,7 +744,7 @@ async def delete_flight(request: Request, flight_id: int = Query(...), current_u
 async def update_flight(request: Request, current_user_id: int = Depends(get_current_user_id)) -> str:
     try:
         body = await request.json()
-        flight = models.Flight(**body)
+        flight = schemas.Flight(**body)
 
         #check if user id and token id matches
         if flight.user_id != current_user_id:
@@ -814,7 +815,7 @@ async def update_flight(request: Request, current_user_id: int = Depends(get_cur
     }
 )
 @limiter.limit("5/minute")  # 5 requests in a minute for every ip
-async def getFlightOptions(request: Request, flight: models.Flight, current_user_id: int = Depends(get_current_user_id)):
+async def getFlightOptions(request: Request, flight: schemas.Flight, current_user_id: int = Depends(get_current_user_id)):
     """
     returns the flight options and None if a problem occurd
     """
