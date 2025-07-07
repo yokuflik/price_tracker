@@ -6,7 +6,7 @@ import config
 import logging
 import time
 from datetime import datetime, timedelta
-import backend.schemas as schemas
+import schemas as schemas
 import json
 import amadeus_history_data_base as history_db
 

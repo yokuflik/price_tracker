@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import ValidationError
+from requests import Session
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -22,7 +23,7 @@ import amadeus_api
 import config
 import schemas
 import CRUD_users_and_flights_data_base as control_db
-import connect_to_data_base as connect_to_db
+from connect_to_data_base import get_db
 
 #region loggor
 
@@ -57,6 +58,8 @@ def getAirportsDict():
 
 airports = getAirportsDict()
 
+#region main funcs
+
 #this is the api object
 app = FastAPI()
 
@@ -82,7 +85,7 @@ async def health_check():
     checks if the api is working it will check the data base and the amadeus api
     """
     try:
-        db.callFuncFromOtherThread() #it will open the data base and close it 
+        next(get_db) #it will open the data base and close it 
     except Exception as e:
         logger.error(f"Health check failed on data base: {e}")
         raise HTTPException(status_code=503, detail=f"API Unavailable: {e}")
@@ -98,64 +101,7 @@ async def health_check():
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(status_code=429, content={"detail": "Too many requests, please slow down."})
 
-@app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """
-    catch all the http errors
-    """
-    logger.error(f"HTTPException: {exc.status_code} - {exc.detail} for path: {request.url.path}")
-
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail}
-    )
-
-#region users
-
-#a debug func
-
-"""
-@app.get("/get_all_users", summary="Get list of all registered users",
-    description="Retrieves a list of all users in the system with their basic information.",
-    response_description="List of user objects",
-    tags=["Users"],
-    responses={
-        status.HTTP_200_OK: {
-            "description": "Successful Response",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "status": "ok",
-                        "content": [
-                            {"id": 1, "email": "user1@example.com"},
-                            {"id": 2, "email": "user2@example.com"}
-                        ]
-                    }
-                }
-            }
-        },
-        status.HTTP_429_TOO_MANY_REQUESTS: {
-            "description": "Rate limit exceeded (2 requests per minute)"
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "description": "Database error occurred",
-            "content": {
-                "application/json": {
-                    "example": {"detail": "Problem with the data base. <ErrorType> - <ErrorMessage>"}
-                }
-            }
-        }
-    }
-)
-@limiter.limit("2/minute")  # 2 requests in a minute for every ip
-async def get_all_users(request: Request, token):
-    try:
-        logger.info("All users list was sended")
-        return JSONResponse(status_code=200, content={"status":"ok", "content" :db.callFuncFromOtherThread(db.get_all_users)})
-    except HTTPException as e:
-        logger.error(f"Error in /get_all_users: {e}")
-        raise HTTPException(status_code=500, detail=f"Problem with the data base. {type(e)} - {e}")
-"""
+#endregion
 
 #region tokens and passwords
 
@@ -215,12 +161,14 @@ def get_current_user_id(token: str = Depends(oauth2_scheme)):
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Could not validate credentials: {e}")
 
-def check_if_mail_matches_user_id(email: str, user_id:int) -> bool:
-    if db.callFuncFromOtherThread(db.get_user_id_by_email, email) == user_id and user_id is not None:
+def check_if_mail_matches_user_id(db: Session, email: str, user_id:int) -> bool:
+    if control_db.get_user_by_email(db, email).id == user_id and user_id is not None:
         return True
     return False
 
 #endregion
+
+#region users
 
 @app.post("/register_user",
     summary="Register a new user",
@@ -261,7 +209,7 @@ def check_if_mail_matches_user_id(email: str, user_id:int) -> bool:
         }
     })
 @limiter.limit("3/minute")  # 3 requests in a minute for every ip
-async def register_user(request: Request):
+async def register_user(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
         email = body.get("email")
@@ -276,11 +224,11 @@ async def register_user(request: Request):
         user = schemas.UserInfo(email=email, hash_password=hash_password(password))
 
         #check if the user already exists
-        if db.callFuncFromOtherThread(db.get_user_id_by_email, user.email) != None:
+        if control_db.get_user_by_email(db, user.email) != None:
             logger.warning(f"User already exists: {user.email}")
             raise HTTPException(status_code=422, detail=f"User {user.email} already exists")
         
-        success = db.callFuncFromOtherThread(db.addUser, user)
+        success = control_db.create_new_user(db, user)
 
         if success:
             logger.info(f"User added successfully: {body}")
@@ -303,7 +251,7 @@ async def register_user(request: Request):
 
 @app.post("/login", response_model=dict)
 @limiter.limit("20/minute")  # 20 requests in a minute for every ip
-async def login(request: Request):
+async def login(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
         #user = models.UserInfo(**body)
@@ -311,15 +259,17 @@ async def login(request: Request):
         password = body.get("password")
 
         #check if the user exists
-        if db.callFuncFromOtherThread(db.get_user_id_by_email, email) == None:
+        try:
+            user = control_db.get_user_by_email(db, email) == None
+        except HTTPException:
             logger.warning(f"User not exists: {email}")
             raise HTTPException(status_code=400, detail=f"User {email} not exists")
         
         #check if the password is correct the password now in the user isnt hashed
-        hashed = db.callFuncFromOtherThread(db.get_user_hashed_password_by_email, email)
+        hashed = user.hashed_password
         if check_user_password(password, hashed):
             #login the user
-            access_token_data = {"sub": str(db.callFuncFromOtherThread(db.get_user_id_by_email, email))} #the token conatines the user id
+            access_token_data = {"sub": str(user.id)} #the token conatines the user id
             access_token = create_access_token(access_token_data)
             return {"access_token": access_token, "token_type": "bearer"}
         else:
@@ -382,19 +332,17 @@ async def login(request: Request):
         }
     })
 @limiter.limit("3/minute")  # 3 requests in a minute for every ip
-def delete_user(request: Request, user_email: str = Query(...), current_user_id: int = Depends(get_current_user_id)):
+def delete_user(request: Request, user_email: str = Query(...), user_password = Query(...), current_user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)):
     
-    if not check_if_mail_matches_user_id(user_email, current_user_id): #if someone else trys to delete a user that isnt him
+    if not check_if_mail_matches_user_id(db, user_email, current_user_id): #if someone else trys to delete a user that isnt him
         logger.warning(f"A user {user_email} tryes to delete other user {current_user_id}")
         raise HTTPException(status_code=403, detail="You are not authorized to add flights to other users.")
 
-    success = db.callFuncFromOtherThread(db.delete_user, user_email)
-
-    #return {"message": f"{config.USER_DELETED_SUCCESSFULLY if success else config.USER_DELETE_FAILED}"}
-    if success:
+    try:
+        control_db.delete_user(db, user_email, hash_password(user_password))
         logger.info(f"User deleted successfully: email - {user_email}")
         return JSONResponse(status_code=200, content={"message" : config.USER_DELETED_SUCCESSFULLY, "email":user_email})
-    else:
+    except HTTPException:
         logger.warning(f"warning in /delete_user email: {user_email}")
         raise HTTPException(status_code=500, detail=config.USER_DELETE_FAILED)
 
@@ -425,14 +373,9 @@ def check_flight(flight: schemas.Flight):
     if flight.arrival_airport not in airports:
         raise ValueError(f"The arrival airport '{flight.arrival_airport}' isn't a supported airport")
     
-    try:
-        db.callFuncFromOtherThread(db.get_user_email_by_id, flight.user_id)
-    except ValueError:  # user not found
-        raise ValueError(f"User id {flight.user_id} not found")
-    
     isInFormat, isInPast = check_date_format_and_past(flight.requested_date)
     if not isInFormat:
-        raise ValueError(f"The requested date '{flight.requested_date}' isn't in the right format - {DATE_FORMAT}")
+        raise ValueError(f"The requested date '{flight.requested_date}' isn't in the right format - {config.DATE_FORMAT}")
     if isInPast:
         raise ValueError(f"The requested date '{flight.requested_date}' cannot be in the past")
 
@@ -503,7 +446,7 @@ def check_flight(flight: schemas.Flight):
     }
 )
 @limiter.limit("10/minute")  # 10 requests in a minute for every ip
-async def add_flight(request: Request, current_user_id: int = Depends(get_current_user_id)):
+async def add_flight(request: Request, current_user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)):
     """
     Track a new flight with price alert functionality.
     
@@ -537,12 +480,11 @@ async def add_flight(request: Request, current_user_id: int = Depends(get_curren
             logger.warning(f"A user {flight.user_id} tryes to access other user {current_user_id} flights")
             raise HTTPException(status_code=403, detail="You are not authorized to add flights to other users.")
         
-        success = db.callFuncFromOtherThread(db.addTrackedFlight, flight.user_id, flight)
-
-        if success:
+        try:
+            control_db.add_flight(db, flight)
             logger.info(f"Flight added successfully: {body}")
             return JSONResponse(status_code=200, content={"message" : config.FLIGHT_ADDED_SUCCESSFULLY})
-        else:
+        except HTTPException:
             logger.warning(f"warning in /add_flight body:{body}")
             raise HTTPException(status_code=500, detail=config.FLIGHT_ADD_FAILED)
     
@@ -602,12 +544,12 @@ async def add_flight(request: Request, current_user_id: int = Depends(get_curren
     }
 )  # 10 requests in a minute for every ip
 @limiter.limit("10/minute")
-async def get_flights(request: Request, user_email: str = Query(...), current_user_id: int = Depends(get_current_user_id)):
-    if not check_if_mail_matches_user_id(user_email, current_user_id):
+async def get_flights(request: Request, user_email: str = Query(...), current_user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)):
+    if not check_if_mail_matches_user_id(db, user_email, current_user_id):
         logger.warning(f"A user {user_email} tryes to access other user {current_user_id} flights")
         raise HTTPException(status_code=403, detail="You are not authorized to get flights from other users.")
     try:
-        return JSONResponse(status_code=200, content={"flights" : db.callFuncFromOtherThread(db.getAllUserFlights, user_email)})
+        return JSONResponse(status_code=200, content={"flights" : control_db.get_all_user_flights(db, user_email)})
     except Exception as e:
         if config.USER_NOT_FOUND_ERROR in str(e): #user not found
             logger.warning(f"warning in /get_flights: user {user_email} not found")
@@ -670,20 +612,20 @@ async def get_flights(request: Request, user_email: str = Query(...), current_us
     }
     )
 @limiter.limit("30/minute")  # 30 requests in a minute for every ip
-async def delete_flight(request: Request, flight_id: int = Query(...), current_user_id: int = Depends(get_current_user_id)):
+async def delete_flight(request: Request, flight_id: int = Query(...), current_user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)):
     
-    user_id = db.callFuncFromOtherThread(db.get_user_id_by_flight_id, flight_id) #will raise http error if not exists
+    user_id = control_db.get_user_id_by_flight_id(db, flight_id) #will raise http error if not exists
 
     #check if user id and token id matches
     if user_id != current_user_id:
         logger.warning(f"A user {user_id} tryes to access other user {current_user_id} flights")
         raise HTTPException(status_code=403, detail="You are not authorized to delete flights that belongs other users.")
     
-    success = db.callFuncFromOtherThread(db.deleteFlightById, int(flight_id))
-    if success:
+    try:
+        control_db.delete_flight_by_id(db, flight_id) #it will raise an http 404 error if the flight not founded
         logger.info(f"Flight deleted successfully: flight_id - {flight_id}")
         return JSONResponse(status_code=200, content={"message" : config.FLIGHT_DELETED_SUCCESSFULLY, "flight_id": flight_id})
-    else:
+    except HTTPException:
         logger.warning(f"Warning in /delete_flights flight_id: {flight_id}")
         raise HTTPException(status_code=500, detail=config.FLIGHT_DELETE_FAILED)
 
@@ -741,7 +683,7 @@ async def delete_flight(request: Request, flight_id: int = Query(...), current_u
     }
 )
 @limiter.limit("10/minute")  # 10 requests in a minute for every ip
-async def update_flight(request: Request, current_user_id: int = Depends(get_current_user_id)) -> str:
+async def update_flight(request: Request, current_user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)) -> str:
     try:
         body = await request.json()
         flight = schemas.Flight(**body)
@@ -751,23 +693,21 @@ async def update_flight(request: Request, current_user_id: int = Depends(get_cur
             logger.warning(f"A user {flight.user_id} tryes to access other user {current_user_id} flights")
             raise HTTPException(status_code=403, detail="You are not authorized to delete flights that belongs other users.")
     
-        check_flight(flight)
-        success = db.callFuncFromOtherThread(db.updateTrackedFlightDetail, flight.flight_id, flight)
-        if success:
+        check_flight(flight) #check if the flight parameters are good
+        
+        try:
+            control_db.update_flight(db, flight.flight_id, flight)
             logger.info(f"Flight updated successfully: {body}")
             return JSONResponse(status_code=200, content={"message" :config.FLIGHT_UPDATED_SUCCESSFULLY, "flight_id" : flight.flight_id})
-        else:
+        except HTTPException:
             logger.warning(f"Warning in /update_flight"+ (f", body: {body}" if 'body' in locals() else ""))
             raise HTTPException(status_code=500, detail=config.FLIGHT_UPDATE_FAILED)
         
     except HTTPException as e:
-        # let the error i made to keep going
+        # let the error I made to keep going
         raise e
     
     except ValueError as e:
-        if config.USER_NOT_FOUND_ERROR in str(e):
-            logger.warning(f"Warningg in /update_flight: user_id: {flight.user_id} not found")
-            raise HTTPException(status_code=404, detail=config.USER_NOT_FOUND_ERROR)
         logger.error(f"Error in /update_flight: {e}"+ (f", body: {body}" if 'body' in locals() else ""))
         raise HTTPException(status_code=400, detail=str(e))
 

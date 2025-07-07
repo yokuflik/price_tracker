@@ -23,13 +23,15 @@ def _create_five_dummy_users(db: Session):
         password = f"dummyPassword{i}!"
         user_data = schemas.UserCreate(email=email, hashed_password=password)
 
-        if not get_user_by_email(db, email):
+        try:
+            get_user_by_email(db, email)
+            print(f"  User {email} already exists. Skipping.")
+        except:
             user_id = create_new_user(db, user_data)
             add_flight(db, schemas.Flight(user_id=user_id, departure_airport="TLV", arrival_airport="BKK", requested_date="2025-10-10", target_price=400))
-        else:
-            print(f"  User {email} already exists. Skipping.")
+        
 
-def _print_all_users_and_flights(db:Session):
+def _print_all_users_and_flights(db: Session):
     users = _get_all_users(db)
 
     for user in users:
@@ -68,7 +70,15 @@ def delete_user(db: Session, email: str, password_hash: str):
     db.commit()
 
 def get_user_by_email(db: Session, email: str) -> dbm.User:
+    """
+    find the user with the given email if not founded it will raise http 404 error
+    """
     user = db.query(dbm.User).filter(dbm.User.email == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with email {email} not found."
+        )
     return user
 
 def get_user_by_id(db: Session, user_id: int) -> dbm.User:
@@ -79,6 +89,9 @@ def get_user_by_id(db: Session, user_id: int) -> dbm.User:
             detail=f"User with ID {user_id} not found."
         )
     return user
+
+def get_user_id_by_flight_id(db: Session, flight_id:int) -> int:
+    return get_flight_by_id(db, flight_id).user_id
 
 def check_if_user_email_matches_user_password(db: Session, email:str, password_hash:str) -> bool:
     user = db.query(dbm.User).filter(dbm.User.email == email).first()
@@ -131,8 +144,8 @@ def add_flight(db: Session, flight: schemas.Flight) -> int:
             )
         raise
 
-def get_all_user_flights(db: Session, user_id: int) -> list[dbm.Flight]:
-    user_in_db = get_user_by_id(db, user_id)
+def get_all_user_flights(db: Session, user_email: str) -> list[dbm.Flight]:
+    user_in_db = get_user_by_email(db, user_email)
 
     return user_in_db.flights_to_track
 
@@ -235,7 +248,7 @@ def update_all_flights_details(db: Session, update_func):
         except ValueError as e:
             raise HTTPException (status_code=status.HTTP_400_BAD_REQUEST, detail=f"the update func didnt return the flight good: {flight}")
 
-def delete_flight(db: Session, flight_id: int):
+def delete_flight_by_id(db: Session, flight_id: int):
     db_flight = get_flight_by_id(db, flight_id) #check if the flight exists
 
     try:
@@ -247,7 +260,6 @@ def delete_flight(db: Session, flight_id: int):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred during flight deletion: {e}"
         )
-
 
 #endregion
 
@@ -261,4 +273,5 @@ def test_restart():
     #update_flight(db = db, user_id=5, flight = schemas.Flight(flight_id=5,user_id=5, departure_airport="BKK", arrival_airport="TLV", requested_date="2025-12-12", target_price=600))
     _print_all_users_and_flights(db)
         
+test_restart()
 #endregion

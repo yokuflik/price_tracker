@@ -2,7 +2,7 @@ import os
 import sqlite3
 import pandas as pd
 from dotenv import load_dotenv
-import backend.schemas as schemas
+import schemas
 load_dotenv()
 
 AMADEUS_HISTORY_DATA_BASE_FILE = os.getenv("AMADEUS_HISTORY_DATA_BASE_FILE", "amadeus_history.db")
