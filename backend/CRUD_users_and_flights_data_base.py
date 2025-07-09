@@ -30,13 +30,12 @@ def _create_five_dummy_users(db: Session):
             user_id = create_new_user(db, user_data)
             add_flight(db, schemas.Flight(user_id=user_id, departure_airport="TLV", arrival_airport="BKK", requested_date="2025-10-10", target_price=400))
         
-
 def _print_all_users_and_flights(db: Session):
     users = _get_all_users(db)
 
     for user in users:
         print (f"{user}\n----flights----")
-        flights = get_all_user_flights(db, user.id)
+        flights = get_all_user_flights(db, user.email)
         if len(flights) == 0:
             print ("user dousnt have flights")
         else:

@@ -6,9 +6,10 @@ import config
 import logging
 import time
 from datetime import datetime, timedelta
-import schemas as schemas
+import schemas
 import json
 import amadeus_history_data_base as history_db
+from config import settings
 
 # Using TTLCache instead of a regular dictionary for practice.
 # For this scale (up to ~50,000 entries), a simple in-memory dict would be more efficient,
@@ -18,9 +19,9 @@ cache = TTLCache(maxsize=50000, ttl=3600)
 def get_cache_key(origin, destination, departureDate):
     return f"{origin}|{destination}|{departureDate}"
 
-load_dotenv()
-
 #region logger
+
+load_dotenv()
 
 #set the logger
 LOG_FILE_PATH = os.getenv("API_LOG_FILE_PATH", "api.log")
@@ -43,11 +44,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 #endregion
-
-AMADEUS_API_KEY = os.getenv("AMADEUS_API_KEY")
-AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
-TOKEN_URL = "https://test.api.amadeus.com/v1/security/oauth2/token"
-FLIGHT_SEARCH_URL = "https://test.api.amadeus.com/v2/shopping/flight-offers"
 
 def check_health() -> bool:
     """
@@ -73,10 +69,10 @@ def _get_access_token():
     try:
         data = {
             "grant_type": "client_credentials",
-            "client_id": AMADEUS_API_KEY,
-            "client_secret": AMADEUS_API_SECRET
+            "client_id": settings.AMADEUS_API_KEY,
+            "client_secret": settings.AMADEUS_API_SECRET
         }
-        response = requests.post(TOKEN_URL, data=data, timeout=20)
+        response = requests.post(settings.TOKEN_URL, data=data, timeout=20)
         response.raise_for_status()
         token = response.json().get("access_token")
 
@@ -182,7 +178,7 @@ def search_flights_for_specific_day(flight: schemas.Flight) -> list[dict]:
 
     #get the flights from the amadeus api
     try:
-        response = requests.get(FLIGHT_SEARCH_URL, headers=headers, params=params, timeout=20)
+        response = requests.get(settings.FLIGHT_SEARCH_URL, headers=headers, params=params, timeout=20)
         response.raise_for_status()
     except requests.exceptions.HTTPError as e:
         if response.status_code == 401 and try_last_token:

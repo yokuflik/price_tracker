@@ -3,6 +3,8 @@ from sqlalchemy.orm import relationship
 
 from connect_to_data_base import Base
 
+from datetime import datetime
+
 class User(Base):
     __tablename__ = "users"
 
@@ -47,3 +49,9 @@ class Flight(Base):
                 f"last_price_found={self.last_price_found})"
                 f"more criteria={self.more_criteria}"
                 f"best found={self.best_found}>")
+
+class AmadeusFlight(Flight):
+    __tablename__ = "amadeus_flights"
+
+    id = Column(Integer, primary_key=True, index=True)
+    time_stamp = Column(DateTime, nullable=False, default=datetime.now)

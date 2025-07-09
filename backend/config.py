@@ -8,6 +8,8 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL")
     AMADEUS_API_KEY: str = os.getenv("AMADEUS_API_KEY")
     AMADEUS_API_SECRET: str = os.getenv("AMADEUS_API_SECRET")
+    TOKEN_URL = "https://test.api.amadeus.com/v1/security/oauth2/token"
+    FLIGHT_SEARCH_URL = "https://test.api.amadeus.com/v2/shopping/flight-offers"
 
 settings = Settings()
 

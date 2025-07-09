@@ -28,7 +28,7 @@ def test_add_update_flight():
 
     #test update
     flight.target_price = 400
-    flight.flight_id = user_flights[0]["flight_id"]
+    flight.flight_id = user_flights[0].flight_id
     control_db.update_flight(db, flight.user_id, flight)
 
     #test delete
@@ -36,10 +36,9 @@ def test_add_update_flight():
     
 def test_get_user_info():
     user_id = control_db.get_user_by_email(db, email).id
-    user_email = control_db.get_user_by_id(db, user_id)
+    user_email = control_db.get_user_by_id(db, user_id).email
 
     assert user_email == email
 
 def test_delete_user():
     control_db.delete_user(db = db, email = email, password_hash = hashed)
-

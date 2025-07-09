@@ -254,7 +254,6 @@ async def register_user(request: Request, db: Session = Depends(get_db)):
 async def login(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
-        #user = models.UserInfo(**body)
         email = body.get("email")
         password = body.get("password")
 
