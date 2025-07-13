@@ -21,22 +21,15 @@ def get_cache_key(origin, destination, departureDate):
 
 #region logger
 
-load_dotenv()
-
 #set the logger
-LOG_FILE_PATH = os.getenv("API_LOG_FILE_PATH", "api.log")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
-#set the dir
-log_dir = os.path.dirname(LOG_FILE_PATH)
-if log_dir and not os.path.exists(log_dir):
-    os.makedirs(log_dir)
+LOGGER_NAME = "amadeus_api_logger.log"
 
 logging.basicConfig(
-    level=LOG_LEVEL,
+    level=settings.LOG_LEVEL,
     format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
-        logging.FileHandler(LOG_FILE_PATH, encoding="utf-8"),
+        logging.FileHandler(f"{settings.LOGGOR_FOLDER_PATH}/{LOGGER_NAME}", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -263,8 +256,3 @@ def calculate_connection_hours(itinerary: dict) -> list[float]:
         connection_times_hours.append(connection_hours)
 
     return connection_times_hours
-
-#flight_offers = search_flights(models.Flight(user_id=1, departure_airport="TLV", arrival_airport="JFK", requested_date="2025-12-12", target_price=600,
- #                                            more_criteria=models.MoreCriteria(connection=1, flexible_days_after=0)))
-
-#print (len(flight_offers))

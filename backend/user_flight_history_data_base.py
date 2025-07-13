@@ -1,27 +1,21 @@
-import sqlite3
 import os
 from dotenv import load_dotenv
-import backend.schemas as schemas
+from requests import Session
+import schemas
 import pandas as pd
 import logging
 
-HISTORY_DATA_BASE_FILE = os.getenv("USER_FLIGHT_HISTORY_DATA_BASE_FILE", "user_flight_history.db")
+import data_base_models as dbm
+from connect_to_data_base import get_new_connection
+from config import settings
 
 #region logger
 
-FLIGHT_HISTORY_DB_LOG_FILE_PATH = os.getenv("UPDATE_IN_SERVER_LOG_FILE_PATH", "update_in_server.log")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-#set the dir
-log_dir = os.path.dirname(FLIGHT_HISTORY_DB_LOG_FILE_PATH)
-if log_dir and not os.path.exists(log_dir):
-    os.makedirs(log_dir)
-
 logging.basicConfig(
-    level=LOG_LEVEL,
+    level=settings.LOG_LEVEL,
     format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
-        logging.FileHandler(FLIGHT_HISTORY_DB_LOG_FILE_PATH, encoding="utf-8"),
+        logging.FileHandler(f"{settings.LOGGOR_FOLDER_PATH}/flight_history_db_logger.log", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -32,11 +26,7 @@ logger = logging.getLogger(__name__)
 
 #region debug
 
-def _restartDataBase():
-    if os.path.exists(HISTORY_DATA_BASE_FILE):
-        os.remove(HISTORY_DATA_BASE_FILE)
-
-def _createRndUsers():
+def _createRndFlights(db: Session) -> list[dbm.AddFlight]:
     import random
     res =[]
     airports = [
@@ -52,113 +42,42 @@ def _createRndUsers():
     "CPT"   # Cape Town International Airport, South Africa
     ]
     for i in range(5):
-        try_email = f"try{i+1}@gmail.com"
-        
-        res.append((try_email, schemas.Flight(user_id=0,
-                                departure_airport=airports[random.randint(0,9)], arrival_airport=airports[random.randint(0,9)], 
-                                requested_date="2025-07-01", target_price=float(random.randint(6,12)*50))))
+        res.append(dbm.AddFlight(departure_airport=airports[random.randint(0,9)], arrival_airport=airports[random.randint(0,9)], 
+                                requested_date="2025-07-01", target_price=float(random.randint(6,12)*50)))
         
     return res
 
-def _createRndData():
-    us = _createRndUsers()
+def _createRndData(db: Session):
+    us = _createRndFlights(db)
     for i in us:
-        callFuncFromOtherThread(insert_search, i[1])
+        insert_search(db, i)
 
-def _printAllData():
-    with sqlite3.connect(HISTORY_DATA_BASE_FILE) as conn:
-
-        print ("\nFlight search history:\n")
-        df = pd.read_sql_query("SELECT * FROM flight_search_history;", conn)
-        print(df)
-
-        print ("\nFlight update history:\n")
-        df = pd.read_sql_query("SELECT * FROM flight_update_history;", conn)
-        print(df)
-
-
+def _printAllData(db :Session):
+    query = db.query(dbm.AddFlight).all()
+    if not query:
+        return
+    
+    df = pd.DataFrame([{
+        "id": flight.id,
+        "time_stamp": flight.time_stamp,
+        "departure_airport": flight.departure_airport,
+        "arrival_airport": flight.arrival_airport,
+        "requested_date": flight.requested_date,
+        "target_price": flight.target_price, 
+        "more_criteria": flight.more_criteria
+    } for flight in query])
+    print(df)
+    
 #endregion
 
-def callFuncFromOtherThread(func, *args, **kwargs):
-    #opens the file every time so the file will not stay open when an error occours
-    try:
-        with sqlite3.connect(HISTORY_DATA_BASE_FILE) as conn:
-            cursor = conn.cursor()
-            func(cursor, *args, **kwargs)
-    except Exception as e:
-        logger.error(f"Error in data base: {e}")
+def insert_search(db: Session, flight: dbm.AddFlight):
+    db.add(flight)
+    db.commit()
 
-def make_the_tabel(cursor):
-    #make the tabel if not exsist
-    create_table_query = """
-    CREATE TABLE IF NOT EXISTS flight_search_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-        origin TEXT NOT NULL,
-        destination TEXT NOT NULL,
-        depart_date DATE NOT NULL,
-        target_price REAL NOT NULL
-    );
-    """
-    cursor.execute(create_table_query)
+def insert_update(db: Session, flight: dbm.UpdateFlight):
+    db.add(flight)
+    db.commit()
 
-    cursor.execute("""
-
-    CREATE TABLE IF NOT EXISTS flight_update_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-        origin TEXT NOT NULL,
-        destination TEXT NOT NULL,
-        depart_date DATE NOT NULL,
-        target_price REAL NOT NULL
-    );"""
-    )
-
-    cursor.execute("""
-
-    CREATE TABLE IF NOT EXISTS user_got_flight_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-        origin TEXT NOT NULL,
-        destination TEXT NOT NULL,
-        depart_date DATE NOT NULL,
-        found_price REAL NOT NULL
-    );"""
-    )
-
-def insert_search(cursor, flight: schemas.Flight):
-    insert_query = """
-    INSERT INTO flight_search_history (origin, destination, depart_date, target_price
-    ) VALUES (?, ?, ?, ?);
-    """
-
-    cursor.execute(insert_query, (
-        flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price
-    ))
-
-def insert_update(cursor, flight: schemas.Flight):
-    insert_query = """
-    INSERT INTO flight_update_history (origin, destination, depart_date, target_price
-    ) VALUES (?, ?, ?, ?);
-    """
-
-    cursor.execute(insert_query, (
-        flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.target_price
-    ))
-
-def user_got_his_flight(cursor, flight:schemas.Flight):
-    insert_query = """
-    INSERT INTO user_got_flight_history (origin, destination, depart_date, found_price
-    ) VALUES (?, ?, ?, ?);
-    """
-    cursor.execute(insert_query, (
-        flight.departure_airport, flight.arrival_airport, flight.requested_date, flight.best_found.price
-    ))
-
-try:
-    #_restartDataBase()
-    callFuncFromOtherThread(make_the_tabel)
-    #_createRndData()
-    #_printAllData()
-except Exception as e:
-    logger.error(f"Error in data base: {e}")
+def user_got_his_flight(db: Session, flight: dbm.UserGotFlight):
+    db.add(flight)
+    db.commit()

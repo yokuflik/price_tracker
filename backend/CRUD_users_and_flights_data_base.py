@@ -267,10 +267,9 @@ def delete_flight_by_id(db: Session, flight_id: int):
 def test_restart():
     db_connection._restart()
     #test_add_user()
-    db = next(db_connection.get_db())
+    db = db_connection.get_new_connection()
     _create_five_dummy_users(db)
     #update_flight(db = db, user_id=5, flight = schemas.Flight(flight_id=5,user_id=5, departure_airport="BKK", arrival_airport="TLV", requested_date="2025-12-12", target_price=600))
     _print_all_users_and_flights(db)
-        
-test_restart()
+
 #endregion

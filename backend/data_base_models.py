@@ -17,27 +17,28 @@ class User(Base):
     
     flights_to_track = relationship("Flight", back_populates="owner")
 
-class Flight(Base):
-    __tablename__ = "flights"
-
-    flight_id = Column(Integer, primary_key=True, index=True)
-
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
-    owner = relationship("User", back_populates="flights_to_track")
-
+class baseFlight(Base):
+    __abstract__ = True
     departure_airport = Column(String, nullable=False)
     arrival_airport = Column(String, nullable=False)
     requested_date = Column(DateTime, nullable=False)
     target_price = Column(Float, nullable=False)
 
+    more_criteria = Column(JSON, nullable=False, default={})
+
+class Flight(baseFlight):
+    __tablename__ = "flights"
+
+    flight_id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner = relationship("User", back_populates="flights_to_track")
+
     last_checked = Column(DateTime, nullable=True)
     last_price_found = Column(Float, nullable=True)
     notify_on_any_drop = Column(Boolean, default=False, nullable=False)
 
-    more_criteria = Column(JSON, nullable=False, default={})
     best_found = Column(JSON, nullable=False, default={}) 
-
-    UniqueConstraint('user_id', 'departure_airport', 'arrival_airport', 'requested_date','target_price', 'more_criteria')
 
     def __repr__(self):
         return (f"<Flight(flight_id={self.flight_id}, "
@@ -50,8 +51,26 @@ class Flight(Base):
                 f"more criteria={self.more_criteria}"
                 f"best found={self.best_found}>")
 
-class AmadeusFlight(Flight):
+class AmadeusFlight(baseFlight):
     __tablename__ = "amadeus_flights"
+
+    id = Column(Integer, primary_key=True, index=True)
+    time_stamp = Column(DateTime, nullable=False, default=datetime.now)
+
+class AddFlight(baseFlight):
+    __tablename__ = "flight_search_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    time_stamp = Column(DateTime, nullable=False, default=datetime.now)
+
+class UpdateFlight(baseFlight):
+    __tablename__ = "update_flight_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    time_stamp = Column(DateTime, nullable=False, default=datetime.now)
+
+class UserGotFlight(baseFlight):
+    __tablename__ = "user_got_flight_history"
 
     id = Column(Integer, primary_key=True, index=True)
     time_stamp = Column(DateTime, nullable=False, default=datetime.now)

@@ -27,21 +27,13 @@ from connect_to_data_base import get_db
 
 #region loggor
 
-load_dotenv()
-
-LOG_FILE_PATH = os.getenv("API_LOG_FILE_PATH", "api.log")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-#set the dir
-log_dir = os.path.dirname(LOG_FILE_PATH)
-if log_dir and not os.path.exists(log_dir):
-    os.makedirs(log_dir)
+LOGGER_NAME = "api.log"
 
 logging.basicConfig(
-    level=LOG_LEVEL,
+    level=config.settings.LOG_LEVEL,
     format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
-        logging.FileHandler(LOG_FILE_PATH, encoding="utf-8"),
+        logging.FileHandler(f"{config.settings.LOGGOR_FOLDER_PATH}/{LOGGER_NAME}", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -51,6 +43,8 @@ logger = logging.getLogger(__name__)
 #endregion
 
 #load all the airports names to a list
+load_dotenv()
+
 def getAirportsDict():
     file = os.getenv("AIRPORTS_DICT_FILE")
     with open(file) as f:

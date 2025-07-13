@@ -1,4 +1,3 @@
-import dataBaseFile as db
 import amadeus_api
 from datetime import datetime
 import backend.schemas as schemas
@@ -12,22 +11,17 @@ from email.mime.multipart import MIMEMultipart
 import logging
 import user_flight_history_data_base as flight_history_db
 
+import CRUD_users_and_flights_data_base as control_db
+from connect_to_data_base import get_db
+from config import settings
+
 #region logger
-load_dotenv()
-
-LOG_FILE_PATH = os.getenv("UPDATE_IN_SERVER_LOG_FILE_PATH", "update_in_server.log")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-#set the dir
-log_dir = os.path.dirname(LOG_FILE_PATH)
-if log_dir and not os.path.exists(log_dir):
-    os.makedirs(log_dir)
 
 logging.basicConfig(
-    level=LOG_LEVEL,
+    level=settings.LOG_LEVEL,
     format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
-        logging.FileHandler(LOG_FILE_PATH, encoding="utf-8"),
+        logging.FileHandler(f"{settings.LOGGOR_FOLDER_PATH}/update_in_server.log", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -64,7 +58,7 @@ def send_email(recipient_email: str, subject: str, body: str) -> bool:
 #endregion
 
 def updateAllFlightPrices():
-    db.callFuncFromOtherThread(db.update_all_flight_details, updateBestFlight)
+    control_db.update_all_flights_details(next(get_db()), updateBestFlight)
 
 def updateBestFlight(flight: schemas.Flight) -> schemas.Flight:
     """

@@ -11,6 +11,12 @@ class Settings:
     TOKEN_URL = "https://test.api.amadeus.com/v1/security/oauth2/token"
     FLIGHT_SEARCH_URL = "https://test.api.amadeus.com/v2/shopping/flight-offers"
 
+    LOGGOR_FOLDER_PATH: str = os.getenv("LOG_FILE_PATH", "logs")
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+    if LOGGOR_FOLDER_PATH and not os.path.exists(LOGGOR_FOLDER_PATH):
+        os.makedirs(LOGGOR_FOLDER_PATH)
+
 settings = Settings()
 
 TOKEN_ERROR = "Error with the api token"
