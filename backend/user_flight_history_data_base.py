@@ -70,14 +70,38 @@ def _printAllData(db :Session):
     
 #endregion
 
-def insert_search(db: Session, flight: dbm.AddFlight):
-    db.add(flight)
+def insert_search(db: Session, flight: schemas.Flight):
+    flight_to_add = dbm.UserGotFlight(
+        departure_airport=flight.departure_airport,
+        arrival_airport=flight.arrival_airport,
+        requested_date=flight.requested_date,
+        target_price=flight.best_found.price,
+        more_criteria=flight.more_criteria
+    )
+
+    db.add(flight_to_add)
     db.commit()
 
-def insert_update(db: Session, flight: dbm.UpdateFlight):
-    db.add(flight)
+def insert_update(db: Session, flight: schemas.Flight):
+    flight_to_add = dbm.UpdateFlight(
+        departure_airport=flight.departure_airport,
+        arrival_airport=flight.arrival_airport,
+        requested_date=flight.requested_date,
+        target_price=flight.best_found.price,
+        more_criteria=flight.more_criteria
+    )
+
+    db.add(flight_to_add)
     db.commit()
 
-def user_got_his_flight(db: Session, flight: dbm.UserGotFlight):
-    db.add(flight)
+def user_got_his_flight(db: Session, flight: schemas.Flight):
+    flight_to_add = dbm.UserGotFlight(
+        departure_airport=flight.departure_airport,
+        arrival_airport=flight.arrival_airport,
+        requested_date=flight.requested_date,
+        target_price=flight.best_found.price,
+        more_criteria=flight.more_criteria
+    )
+    
+    db.add(flight_to_add)
     db.commit()

@@ -10,6 +10,7 @@ import connect_to_data_base as db_connection
 from datetime import datetime
 
 import schemas
+import user_flight_history_data_base as flight_history_db
 
 #region debug
 
@@ -127,6 +128,8 @@ def add_flight(db: Session, flight: schemas.Flight) -> int:
         db.add(db_flight)
         db.commit()
         db.refresh(db_flight)
+
+        flight_history_db.insert_search(db, db_flight) #add the flight to the history
         return db_flight.flight_id
     
     except IntegrityError as e:
@@ -226,6 +229,9 @@ def update_flight(db: Session, user_id:int, flight: schemas.Flight):
     try:
         db.commit()
         db.refresh(db_flight)
+
+        flight_history_db.insert_update(db, db_flight) #add the flight to the history
+        
         return db_flight
     
     except IntegrityError as e:

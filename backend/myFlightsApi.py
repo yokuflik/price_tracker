@@ -215,7 +215,7 @@ async def register_user(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=422, detail=f"Password not good")
 
         #hash the password
-        user = schemas.UserInfo(email=email, hash_password=hash_password(password))
+        user = schemas.UserCreate(email=email, hash_password=hash_password(password))
 
         #check if the user already exists
         if control_db.get_user_by_email(db, user.email) != None:

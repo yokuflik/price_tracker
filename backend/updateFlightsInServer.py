@@ -1,8 +1,7 @@
 import amadeus_api
 from datetime import datetime
-import backend.schemas as schemas
+import schemas
 import os
-from dotenv import load_dotenv
 import requests
 
 import smtplib
@@ -12,7 +11,7 @@ import logging
 import user_flight_history_data_base as flight_history_db
 
 import CRUD_users_and_flights_data_base as control_db
-from connect_to_data_base import get_db
+from connect_to_data_base import get_new_connection
 from config import settings
 
 #region logger
@@ -58,7 +57,7 @@ def send_email(recipient_email: str, subject: str, body: str) -> bool:
 #endregion
 
 def updateAllFlightPrices():
-    control_db.update_all_flights_details(next(get_db()), updateBestFlight)
+    control_db.update_all_flights_details(get_new_connection(), updateBestFlight)
 
 def updateBestFlight(flight: schemas.Flight) -> schemas.Flight:
     """
@@ -144,15 +143,14 @@ def foundBetterFlight(flight: schemas.Flight):
     add the flight that was founded to the correct data base and then notify the user in the production it will be by email
     """
     #add to the data base
-    flight_history_db.callFuncFromOtherThread(flight_history_db.user_got_his_flight, flight)
+    flight_history_db.user_got_his_flight(get_new_connection(), flight)
     print("found better flight")
 
     #send_email(db.callFuncFromOtherThread(db.get_user_email_by_id, float(flight.user_id)), 
      #          f"Hi \nWe found a flight in the price you wanted - {flight.best_found.time} in {flight.best_found.price}$ by {flight.best_found.airline}")
 
 def main():
-    print (type(getFlightOptions(schemas.Flight(user_id=2, departure_airport="TLV", arrival_airport="JFK", 
-                                               requested_date="2025-12-12", target_price=400))))
+    pass
     #while True:
     #updateAllFlightPrices()
         #time.sleep(3600) #it will be activated when it will work
