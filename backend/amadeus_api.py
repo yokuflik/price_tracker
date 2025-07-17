@@ -49,7 +49,9 @@ def check_health() -> bool:
         token_cache["token"] = token
 
         return True
-    except:
+    except Exception as e:
+        logger.error(f"Error in checking Amadeus API health: {e}")
+        # If there's an error, we assume the API is not healthy.
         return False
 
 token_cache = TTLCache(maxsize=1, ttl=3600)

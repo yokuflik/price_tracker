@@ -215,14 +215,20 @@ async def register_user(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=422, detail=f"Password not good")
 
         #hash the password
-        user = schemas.UserCreate(email=email, hash_password=hash_password(password))
+        user = schemas.UserCreate(email=email, hashed_password=hash_password(password))
+        logger.info(f"Adding user: {user.email}")
 
         #check if the user already exists
-        if control_db.get_user_by_email(db, user.email) != None:
+        try:
+            control_db.get_user_by_email(db, user.email)
+
+            #if not falling to the next line, it means the user exists
             logger.warning(f"User already exists: {user.email}")
             raise HTTPException(status_code=422, detail=f"User {user.email} already exists")
+        except HTTPException:
+            pass #if the user not exists, it will raise an http exception
         
-        success = control_db.create_new_user(db, user)
+        success = control_db.create_new_user(db, user) != None #if the user was added successfully
 
         if success:
             logger.info(f"User added successfully: {body}")

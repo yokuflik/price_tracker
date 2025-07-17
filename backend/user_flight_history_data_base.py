@@ -105,3 +105,16 @@ def user_got_his_flight(db: Session, flight: schemas.Flight):
     
     db.add(flight_to_add)
     db.commit()
+
+def user_flight_expired(db: Session, flight: schemas.Flight):
+    flight_to_add = dbm.UserFlightExpired(
+        departure_airport=flight.departure_airport,
+        arrival_airport=flight.arrival_airport,
+        requested_date=flight.requested_date,
+        target_price=flight.target_price,
+        more_criteria=flight.more_criteria, 
+        best_found=flight.best_found.to_dict() if flight.best_found else {}
+    )
+    
+    db.add(flight_to_add)
+    db.commit()

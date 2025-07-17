@@ -1,0 +1,49 @@
+/* src/components/FlightForm.css */
+.flight-form-card {
+    /* This will inherit styles from .form-card in index.css */
+    /* Add any specific overrides here if needed */
+}
+
+.flight-form-card h3 {
+    text-align: center;
+    color: var(--primary-color);
+    margin-bottom: 2rem;
+    font-size: 1.8rem;
+}
+
+.flight-form-card h4 {
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    color: var(--secondary-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: auto;
+    /* Override default 100% width */
+    margin-right: 0.5rem;
+}
+
+.checkbox-group label {
+    margin-bottom: 0;
+    /* Remove bottom margin for alignment */
+}
+
+/* Specific styling for required inputs, if desired */
+.form-group label[required]::after {
+    content: ' *';
+    color: var(--danger-color); }

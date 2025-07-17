@@ -1,0 +1,124 @@
+/* src/Auth.css */
+
+/* General container for auth pages to center content */
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+    /* Takes up most of the viewport height */
+    padding: 1rem;
+    /* Add some padding on smaller screens */
+    box-sizing: border-box;
+    /* Include padding in element's total width and height */
+}
+
+/* Card-like styling for login/register forms */
+.form-card {
+    background-color: var(--card-background);
+    /* From index.css */
+    padding: 2.5rem;
+    border-radius: 0.8rem;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
+    /* Max width for the form card */
+    text-align: center;
+    border: 1px solid var(--border-color);
+    /* From index.css */
+}
+
+.form-card h2 {
+    color: var(--primary-color);
+    /* From index.css */
+    margin-bottom: 2rem;
+    font-size: 2rem;
+}
+
+/* Styling for individual form groups (label + input) */
+.form-group {
+    margin-bottom: 1.5rem;
+    text-align: left;
+    /* Align labels and inputs to the left within the group */
+}
+
+.form-group label {
+    display: block;
+    /* Makes label take full width and puts input on next line */
+    margin-bottom: 0.5rem;
+    color: var(--text-color-light);
+    /* From index.css */
+    font-weight: 500;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.8rem;
+    border: 1px solid var(--border-color);
+    /* From index.css */
+    border-radius: 0.4rem;
+    font-size: 1rem;
+    background-color: var(--input-background);
+    /* From index.css */
+    color: var(--text-color);
+    /* From index.css */
+}
+
+.form-group input:focus {
+    border-color: var(--primary-color);
+    /* From index.css */
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
+    /* Soft glow on focus */
+}
+
+/* Styling for submit buttons within the form card */
+.form-card .button {
+    width: 100%;
+    /* Make button fill the width of the card */
+    padding: 0.9rem;
+    font-size: 1.1rem;
+    margin-top: 1rem;
+}
+
+/* Styling for error messages */
+.error-message {
+    color: var(--danger-color);
+    /* From index.css */
+    background-color: var(--danger-background);
+    /* From index.css */
+    border: 1px solid var(--danger-color);
+    padding: 0.8rem;
+    border-radius: 0.4rem;
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+/* Styling for the switch between login/register links */
+.auth-switch {
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+    color: var(--text-color-light);
+    /* From index.css */
+}
+
+.auth-switch a {
+    color: var(--primary-color);
+    /* From index.css */
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.auth-switch a:hover {
+    text-decoration: underline;
+}
+
+/* Responsive adjustments */
+@media (max-width: 500px) {
+    .form-card {
+        padding: 1.5rem;
+    }
+
+    .form-card h2 {
+        font-size: 1.6rem;
+    } }

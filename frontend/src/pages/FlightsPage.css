@@ -1,0 +1,95 @@
+/* src/pages/FlightsPage.css */
+.flights-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.flight-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.flight-card {
+    background-color: var(--card-background);
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    /* Pushes buttons to bottom */
+}
+
+.flight-card h3 {
+    margin-top: 0;
+    color: var(--primary-color);
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+}
+
+.flight-card p {
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.flight-card strong {
+    color: var(--text-color);
+}
+
+.flight-card-actions {
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    /* Align buttons to the right */
+}
+
+.flight-card-actions .button {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+}
+
+/* Modal Overlay for FlightForm */
+.flight-form-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    /* Ensure it's above other content */
+}
+
+.flight-form-modal {
+    background-color: var(--card-background);
+    padding: 2.5rem;
+    border-radius: 0.8rem;
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.3);
+    max-width: 600px;
+    /* Adjust as needed */
+    width: 90%;
+    max-height: 90vh;
+    /* Limit height for scroll if content is long */
+    overflow-y: auto;
+    /* Enable scrolling for long forms */
+    position: relative;
+}
+
+@media (max-width: 768px) {
+    .flights-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .flight-form-modal {
+        padding: 1.5rem;
+    } }

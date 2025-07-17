@@ -64,6 +64,13 @@ def updateBestFlight(flight: schemas.Flight) -> schemas.Flight:
     the function that updates the flight last price found and best price found if founded and also notifys the user if found the flight he wanted
     """
 
+    #check if expired
+    last_day = flight.requested_date + datetime.timedelta(days=flight.more_criteria.flexible_days_after)
+    if datetime.now() > last_day:
+        logger.info(f"Flight {flight.flight_id} expired, removing from tracking.")
+        flight_history_db.user_flight_expired(get_new_connection(), flight) #add the expierd flight to the history
+        return None #when returning none it will delete the flight from the data base
+    
     #find the best flight
     flightOptions = getFlightOptions(flight)
     bestPrice = None

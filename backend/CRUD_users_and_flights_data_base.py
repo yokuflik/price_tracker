@@ -249,7 +249,10 @@ def update_all_flights_details(db: Session, update_func):
     for flight in flights:
         try:
             new_flight = update_func(flight)
-            update_flight(db, new_flight.user_id, new_flight)
+            if new_flight is None: #if the flight is expired
+                delete_flight_by_id(db, flight.flight_id)
+            else:
+                update_flight(db, new_flight.user_id, new_flight)
         except ValueError as e:
             raise HTTPException (status_code=status.HTTP_400_BAD_REQUEST, detail=f"the update func didnt return the flight good: {flight}")
 

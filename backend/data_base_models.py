@@ -74,3 +74,11 @@ class UserGotFlight(baseFlight):
 
     id = Column(Integer, primary_key=True, index=True)
     time_stamp = Column(DateTime, nullable=False, default=datetime.now)
+
+class UserFlightExpired(baseFlight):
+    __tablename__ = "user_flight_expired_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    time_stamp = Column(DateTime, nullable=False, default=datetime.now)
+
+    best_found = Column(JSON, nullable=False, default={}) 
