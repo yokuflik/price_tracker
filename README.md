@@ -66,7 +66,8 @@ To get this project up and running, follow these steps:
 **Future Enhancements:**
 In the future, the plan is to integrate the frontend and backend within the same Docker container, enabling a full-stack deployment.
 
----
+**License**
+This project is licensed under the [GNU Lesser General Public License v2.1](LICENSE) - see the [LICENSE](LICENSE) file for details.
 
 ## Contact
 
